@@ -15,6 +15,7 @@ Midterm and final have separate settings. Settings and fixed exams are saved in 
 
 ## Files
 - `index.html`, `style.css`, `app.js`: the interface
+- `i18n.js`: all interface text in English and Arabic
 - `solver.js`: the scheduler (greedy start + simulated annealing), runs in a Web Worker
 - `vendor/xlsx.full.min.js`: SheetJS 0.18.5 for reading/writing Excel
 

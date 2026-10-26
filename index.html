@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" dir="ltr">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8,202 +8,219 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>window.XLSX || document.write('<script src="vendor/xlsx.full.min.js"><\/script>');</script>
 <script src="solver.js"></script>
+<script src="i18n.js"></script>
 </head>
 <body>
 <header class="top">
   <div class="brand">
     <div class="logo">NMU</div>
-    <div>
-      <h1>Exam Scheduler</h1>
-      <p class="sub">Midterm &amp; final timetables from student enrollments · جدولة الامتحانات</p>
+    <div class="brand-text">
+      <h1 data-i18n="app.title">Exam Scheduler</h1>
+      <p class="sub" data-i18n="app.sub"></p>
+    </div>
+    <div class="top-tools">
+      <button id="langBtn" class="tool-btn" type="button"></button>
+      <button id="themeBtn" class="tool-btn" type="button"></button>
     </div>
   </div>
   <nav class="tabs" id="tabs">
-    <button data-mode="midterm" class="active">Midterm · الميد</button>
-    <button data-mode="final">Final · الفاينال</button>
+    <button data-mode="midterm" class="active" data-i18n="tab.midterm">Midterm</button>
+    <button data-mode="final" data-i18n="tab.final">Final</button>
   </nav>
 </header>
 
 <main id="main">
-  <p class="hint reorder-hint">Use ▲ ▼ next to a section title to change the order of sections.</p>
-  <!-- 1. Enrollment -->
+  <div class="row wrap toolbar">
+    <p class="hint reorder-hint" data-i18n="hint.reorder"></p>
+    <button id="foldAll" class="btn small" data-i18n="btn.foldAll"></button>
+    <button id="openAll" class="btn small" data-i18n="btn.openAll"></button>
+  </div>
+
   <section class="card sec" data-sec="enroll">
-    <h2><span class="num"></span> Student enrollments <small>ملف تسجيلات الطلاب</small></h2>
-    <p class="hint">Upload the Excel file (one row per student per course). Shared by midterm and final.</p>
-    <div class="row">
-      <label class="file-btn">Choose Excel file<input type="file" id="enrFile" accept=".xlsx,.xls,.csv"></label>
-      <span id="enrInfo" class="muted">No file loaded.</span>
+    <h2><span class="num"></span><span class="sec-title" data-i18n="sec.enroll"></span></h2>
+    <div class="sec-body">
+      <p class="hint" data-i18n="enroll.hint"></p>
+      <div class="row">
+        <label class="file-btn"><span data-i18n="enroll.choose"></span><input type="file" id="enrFile" accept=".xlsx,.xls,.csv"></label>
+        <span id="enrInfo" class="muted"></span>
+      </div>
+      <div id="colMap" class="row wrap hidden"></div>
     </div>
-    <div id="colMap" class="row wrap hidden"></div>
   </section>
 
-  <!-- Courses not in the file -->
   <section class="card sec" data-sec="extra">
-    <h2><span class="num"></span> Courses not in the file <small>مواد مش موجودة في الملف</small></h2>
-    <p class="hint">Add any course that is missing from the Excel file. Student IDs are optional; without them the course has 0 students and only takes a place in the timetable. Shared by midterm and final.</p>
-    <div class="scroll"><table class="tbl" id="extraTbl">
-      <thead><tr><th>Course code</th><th>Course name</th><th>Student IDs</th><th></th></tr></thead>
-      <tbody></tbody>
-    </table></div>
-    <button id="addExtra" class="btn">+ Add course</button>
-  </section>
-
-  <!-- Exam rooms -->
-  <section class="card sec" data-sec="rooms">
-    <h2><span class="num"></span> Exam rooms <small>القاعات</small></h2>
-    <p class="hint">All rooms together set how many students can sit an exam at the same time. <b id="roomsFor"></b> has its own rooms; edit any room below.</p>
-    <div class="row wrap">
-      <label class="inline">Rooms<input type="number" id="roomCount" min="0" max="500" value="30"></label>
-      <label class="inline">Seats per room<input type="number" id="roomSeats" min="1" value="25"></label>
-      <button id="makeRooms" class="btn">Set rooms</button>
-      <button id="allSeats" class="btn small">Apply seats to all rooms</button>
-      <button id="addRoom" class="btn small">+ Add one room</button>
-      <button id="copyRooms" class="btn small"></button>
-    </div>
-    <div id="roomTotal"></div>
-    <details class="adv"><summary>Edit rooms one by one</summary>
-      <div class="scroll short"><table class="tbl" id="roomTbl">
-        <thead><tr><th>Room name</th><th>Seats</th><th></th></tr></thead><tbody></tbody>
+    <h2><span class="num"></span><span class="sec-title" data-i18n="sec.extra"></span></h2>
+    <div class="sec-body">
+      <p class="hint" data-i18n="extra.hint"></p>
+      <div class="scroll"><table class="tbl" id="extraTbl">
+        <thead><tr><th data-i18n="th.code"></th><th data-i18n="th.cname"></th><th data-i18n="th.ids"></th><th></th></tr></thead>
+        <tbody></tbody>
       </table></div>
-    </details>
+      <button id="addExtra" class="btn" data-i18n="btn.addCourse"></button>
+    </div>
   </section>
 
-  <!-- 2. Exam period -->
-  <section class="card sec" data-sec="period">
-    <h2><span class="num"></span> Exam period &amp; times <small>الأيام والمواعيد</small></h2>
-    <div class="grid2">
-      <label>First day<input type="date" id="start"></label>
-      <label>Last day<input type="date" id="end"></label>
-    </div>
-    <div class="field">
-      <span class="lbl">Exam weekdays</span>
-      <div id="weekdays" class="row wrap"></div>
-    </div>
-    <div class="grid2">
-      <label>Days off (holidays) <span class="muted">one date per line</span><textarea id="holidays" rows="2" placeholder="2027-01-07"></textarea><span id="holidayTip"></span></label>
-      <label>Extra days, used only if they help <span class="muted">one date per line</span><textarea id="extraDays" rows="2" placeholder="2026-11-14"></textarea></label>
-    </div>
-    <label class="field">Exam times (one per line, HH:MM-HH:MM)<textarea id="slots" rows="4"></textarea></label>
-    <div id="dayList" class="daylist"></div>
-  </section>
-
-  <!-- 3. Fixed exams -->
-  <section class="card sec" data-sec="fixed">
-    <h2><span class="num"></span> Fixed exams <small>المواد الثابتة (مواعيدها بتتحدد من برة)</small></h2>
-    <p class="hint">These courses keep exactly this day and time. Everything else is scheduled around them.</p>
-    <div class="scroll"><table class="tbl" id="fixedTbl">
-      <thead><tr><th>Course code</th><th>Course</th><th>Students</th><th>Day</th><th>Time</th><th></th></tr></thead>
-      <tbody></tbody>
-    </table></div>
-    <div class="row wrap">
-      <button id="addFixed" class="btn">+ Add fixed exam</button>
-      <details class="paste">
-        <summary>Paste a list</summary>
-        <p class="hint">One per line: <code>CODE, date, start time</code> — e.g. <code>MEC011, 7/11/2026, 10:00</code> or <code>LAN011 2026-11-08 2:30</code></p>
-        <textarea id="pasteFixed" rows="4"></textarea>
-        <button id="pasteBtn" class="btn small">Add these</button>
-        <span id="pasteMsg" class="muted"></span>
+  <section class="card sec" data-sec="rooms">
+    <h2><span class="num"></span><span class="sec-title" data-i18n="sec.rooms"></span></h2>
+    <div class="sec-body">
+      <p class="hint" id="roomsHint"></p>
+      <div class="row wrap">
+        <label class="inline"><span data-i18n="rooms.count"></span><input type="number" id="roomCount" min="0" max="500" value="30"></label>
+        <label class="inline"><span data-i18n="rooms.seats"></span><input type="number" id="roomSeats" min="1" value="25"></label>
+        <button id="makeRooms" class="btn" data-i18n="rooms.set"></button>
+        <button id="allSeats" class="btn small" data-i18n="rooms.allSeats"></button>
+        <button id="addRoom" class="btn small" data-i18n="rooms.addOne"></button>
+        <button id="copyRooms" class="btn small"></button>
+      </div>
+      <div id="roomTotal"></div>
+      <details class="adv"><summary data-i18n="rooms.edit"></summary>
+        <div class="scroll short"><table class="tbl" id="roomTbl">
+          <thead><tr><th data-i18n="th.room"></th><th data-i18n="th.seats"></th><th></th></tr></thead><tbody></tbody>
+        </table></div>
       </details>
     </div>
   </section>
 
-  <!-- 4. Rules -->
-  <section class="card sec" data-sec="rules">
-    <h2><span class="num"></span> Rules <small>القواعد</small></h2>
-    <p class="hint">How the website decides where to put each exam. Change a rule only if you want a different balance.</p>
-    <div class="rules">
-      <div class="rule">
-        <div><b>Seats per exam time</b><span class="muted">How many students can sit an exam at the same time. Comes from the exam rooms board.<br>عدد المقاعد المتاحة في نفس الموعد (من القاعات)</span></div>
-        <div id="seatInfo" class="rule-val"></div>
+  <section class="card sec" data-sec="period">
+    <h2><span class="num"></span><span class="sec-title" data-i18n="sec.period"></span></h2>
+    <div class="sec-body">
+      <div class="grid2">
+        <label><span data-i18n="period.first"></span><input type="date" id="start"></label>
+        <label><span data-i18n="period.last"></span><input type="date" id="end"></label>
       </div>
-      <div class="rule">
-        <div><b>Most exams one student can have in one day</b><span class="muted">The website will never go above this.<br>أقصى عدد امتحانات للطالب في اليوم</span></div>
-        <select id="maxPerDay"><option value="1">1 exam</option><option value="2">2 exams</option><option value="3">3 exams</option><option value="4">4 exams</option><option value="5">5 exams</option></select>
+      <div class="field">
+        <span class="lbl" data-i18n="period.weekdays"></span>
+        <div id="weekdays" class="row wrap"></div>
       </div>
-      <div class="rule" data-n="2">
-        <div><b>A student with 2 exams in one day</b><span class="muted">طالب عنده امتحانين في نفس اليوم</span></div>
-        <select id="pen2" class="lvl"></select>
+      <div class="grid2">
+        <label><span><span data-i18n="period.holidays"></span> <span class="muted" data-i18n="period.perLine"></span></span><textarea id="holidays" rows="2" placeholder="2027-01-07"></textarea><span id="holidayTip"></span></label>
+        <label><span><span data-i18n="period.extra"></span> <span class="muted" data-i18n="period.perLine"></span></span><textarea id="extraDays" rows="2" placeholder="2026-11-14"></textarea></label>
       </div>
-      <div class="rule" data-n="3">
-        <div><b>A student with 3 exams in one day</b><span class="muted">طالب عنده ٣ امتحانات في نفس اليوم (في أضيق الحدود)</span></div>
-        <select id="pen3" class="lvl"></select>
-      </div>
-      <div class="rule" data-n="4">
-        <div><b>A student with 4 exams in one day</b><span class="muted">طالب عنده ٤ امتحانات في نفس اليوم (في أضيق أضيق الحدود)</span></div>
-        <select id="pen4" class="lvl"></select>
-      </div>
-      <div class="rule">
-        <div><b>Exams on two days in a row</b><span class="muted">A student with exams on back-to-back days (e.g. Sunday then Monday).<br>امتحانات في يومين ورا بعض</span></div>
-        <select id="adjPen"><option value="0">Allowed</option><option value="3">Avoid a little</option><option value="20">Avoid</option><option value="50">Avoid strongly</option></select>
-      </div>
-      <div class="rule">
-        <div><b>Extra days</b><span class="muted">When to use the extra days from “Exam period” (e.g. the next Saturday).<br>استخدام الأيام الإضافية</span></div>
-        <select id="extraPen"><option value="0">Use freely</option><option value="20">Use if it helps</option><option value="100">Only if really needed</option></select>
-      </div>
-      <div class="rule">
-        <div><b>Courses with no exam</b><span class="muted">Course codes to leave out, separated by commas.<br>مواد مالهاش امتحان</span></div>
-        <input type="text" id="excluded" placeholder="e.g. GRAD499">
-      </div>
+      <label class="field"><span data-i18n="period.slots"></span><textarea id="slots" rows="4" dir="ltr"></textarea></label>
+      <div id="dayList" class="daylist"></div>
     </div>
-    <details class="adv"><summary>Advanced (you don't need to change these)</summary>
-      <div class="grid3">
-        <label>Search effort <span class="muted">Higher = better result but slower.</span><input type="number" id="iterations" min="10000" step="10000"></label>
-        <label>Attempts <span class="muted">Runs this many times and keeps the best.</span><input type="number" id="restarts" min="1" max="10"></label>
-        <label>Even out exam times <span class="muted">Spreads students evenly across times. 0 = off.</span><input type="number" id="balance" min="0" step="0.01"></label>
-      </div>
-    </details>
-    <div class="row wrap actions">
-      <button id="run" class="btn primary">Generate schedule</button>
-      <span id="runMsg" class="muted"></span>
-      <div class="progress hidden" id="progress"><div></div></div>
-    </div>
-    <div id="warnings"></div>
   </section>
 
-  <!-- 5. Results -->
-  <section class="card sec hidden" data-sec="results" id="results">
-    <h2><span class="num"></span> Schedule <small>الجدول</small></h2>
-    <div class="row wrap">
-      <button id="printBtn" class="btn">Print</button>
-      <span id="genAt" class="muted"></span>
-    </div>
-    <div class="downloads">
-      <span class="lbl">Download</span>
+  <section class="card sec" data-sec="fixed">
+    <h2><span class="num"></span><span class="sec-title" data-i18n="sec.fixed"></span></h2>
+    <div class="sec-body">
+      <p class="hint" data-i18n="fixed.hint"></p>
+      <div class="scroll"><table class="tbl" id="fixedTbl">
+        <thead><tr><th data-i18n="th.code"></th><th data-i18n="th.course"></th><th data-i18n="th.students"></th><th data-i18n="th.day"></th><th data-i18n="th.time"></th><th></th></tr></thead>
+        <tbody></tbody>
+      </table></div>
       <div class="row wrap">
-        <button class="btn primary" data-dl="all">Everything (one Excel file)</button>
-        <button class="btn" data-dl="detailed">Detailed schedule</button>
-        <button class="btn" data-dl="student">Student exam timetable</button>
-        <button class="btn" data-dl="byday">Courses by day</button>
-        <button class="btn" data-dl="heavy" id="dlHeavy">Students with heavy days</button>
-        <button class="btn" data-dl="rooms">Room plan</button>
+        <button id="addFixed" class="btn" data-i18n="btn.addFixed"></button>
+        <details class="paste">
+          <summary data-i18n="paste.summary"></summary>
+          <p class="hint" data-i18n-html="paste.hint"></p>
+          <textarea id="pasteFixed" rows="4" dir="ltr"></textarea>
+          <button id="pasteBtn" class="btn small" data-i18n="paste.add"></button>
+          <span id="pasteMsg" class="muted"></span>
+        </details>
       </div>
-      <span id="dlMsg" class="muted"></span>
     </div>
-    <div id="summary" class="stats"></div>
-    <div class="scroll"><table class="grid" id="gridTbl"></table></div>
+  </section>
 
-    <h3>Courses <span class="muted">— change a day/time by hand, or tick 🔒 to make it fixed</span></h3>
-    <div class="row"><input type="search" id="courseFilter" placeholder="Filter courses…"></div>
-    <div class="scroll"><table class="tbl" id="courseTbl"></table></div>
+  <section class="card sec" data-sec="rules">
+    <h2><span class="num"></span><span class="sec-title" data-i18n="sec.rules"></span></h2>
+    <div class="sec-body">
+      <p class="hint" data-i18n="rules.hint"></p>
+      <div class="rules">
+        <div class="rule">
+          <div><b data-i18n="rule.seats.t"></b><span class="muted" data-i18n="rule.seats.d"></span></div>
+          <div id="seatInfo" class="rule-val"></div>
+        </div>
+        <div class="rule">
+          <div><b data-i18n="rule.max.t"></b><span class="muted" data-i18n="rule.max.d"></span></div>
+          <select id="maxPerDay"></select>
+        </div>
+        <div class="rule" data-n="2">
+          <div><b data-i18n="rule.n2.t"></b><span class="muted" data-i18n="rule.n2.d"></span></div>
+          <select id="pen2" class="lvl"></select>
+        </div>
+        <div class="rule" data-n="3">
+          <div><b data-i18n="rule.n3.t"></b><span class="muted" data-i18n="rule.n3.d"></span></div>
+          <select id="pen3" class="lvl"></select>
+        </div>
+        <div class="rule" data-n="4">
+          <div><b data-i18n="rule.n4.t"></b><span class="muted" data-i18n="rule.n4.d"></span></div>
+          <select id="pen4" class="lvl"></select>
+        </div>
+        <div class="rule">
+          <div><b data-i18n="rule.adj.t"></b><span class="muted" data-i18n="rule.adj.d"></span></div>
+          <select id="adjPen"></select>
+        </div>
+        <div class="rule">
+          <div><b data-i18n="rule.extra.t"></b><span class="muted" data-i18n="rule.extra.d"></span></div>
+          <select id="extraPen"></select>
+        </div>
+        <div class="rule">
+          <div><b data-i18n="rule.excl.t"></b><span class="muted" data-i18n="rule.excl.d"></span></div>
+          <input type="text" id="excluded" data-i18n-ph="ph.excl" dir="ltr">
+        </div>
+      </div>
+      <details class="adv"><summary data-i18n="adv.summary"></summary>
+        <div class="grid3">
+          <label><span data-i18n="adv.iter"></span> <span class="muted" data-i18n="adv.iter.d"></span><input type="number" id="iterations" min="10000" step="10000"></label>
+          <label><span data-i18n="adv.att"></span> <span class="muted" data-i18n="adv.att.d"></span><input type="number" id="restarts" min="1" max="10"></label>
+          <label><span data-i18n="adv.bal"></span> <span class="muted" data-i18n="adv.bal.d"></span><input type="number" id="balance" min="0" step="0.01"></label>
+        </div>
+      </details>
+      <div class="row wrap actions">
+        <button id="run" class="btn primary" data-i18n="btn.run"></button>
+        <span id="runMsg" class="muted"></span>
+        <div class="progress hidden" id="progress"><div></div></div>
+      </div>
+      <div id="warnings"></div>
+    </div>
+  </section>
 
-    <h3>Room plan <span class="muted">— which rooms each exam uses (biggest course first, students split by ID)</span></h3>
-    <div id="roomPlan" class="scroll short"></div>
+  <section class="card sec hidden" data-sec="results" id="results">
+    <h2><span class="num"></span><span class="sec-title" data-i18n="sec.results"></span></h2>
+    <div class="sec-body">
+      <div class="row wrap">
+        <button id="printBtn" class="btn" data-i18n="btn.print"></button>
+        <span id="genAt" class="muted"></span>
+      </div>
+      <div class="downloads">
+        <span class="lbl" data-i18n="dl.label"></span>
+        <div class="row wrap">
+          <button class="btn primary" data-dl="all" data-i18n="dl.all"></button>
+          <button class="btn" data-dl="detailed" data-i18n="dl.detailed"></button>
+          <button class="btn" data-dl="student" data-i18n="dl.student"></button>
+          <button class="btn" data-dl="byday" data-i18n="dl.byday"></button>
+          <button class="btn" data-dl="heavy" id="dlHeavy"></button>
+          <button class="btn" data-dl="rooms" data-i18n="dl.rooms"></button>
+        </div>
+        <span id="dlMsg" class="muted"></span>
+      </div>
+      <div id="summary" class="stats"></div>
+      <div class="scroll"><table class="grid" id="gridTbl"></table></div>
 
-    <h3 id="heavyTitle">Students with heavy days</h3>
-    <div class="scroll short"><table class="tbl" id="heavyTbl"></table></div>
+      <h3><span data-i18n="courses.title"></span> <span class="muted" data-i18n="courses.sub"></span></h3>
+      <div class="row"><input type="search" id="courseFilter" data-i18n-ph="ph.filter"></div>
+      <div class="scroll"><table class="tbl" id="courseTbl"></table></div>
 
-    <h3>Student lookup</h3>
-    <div class="row"><input type="search" id="studentSearch" placeholder="Student ID or name"></div>
-    <div id="studentOut"></div>
+      <h3><span data-i18n="roomplan.title"></span> <span class="muted" data-i18n="roomplan.sub"></span></h3>
+      <div id="roomPlan" class="scroll short"></div>
+
+      <h3 id="heavyTitle"></h3>
+      <div class="scroll short"><table class="tbl" id="heavyTbl"></table></div>
+
+      <h3 data-i18n="lookup.title"></h3>
+      <div class="row"><input type="search" id="studentSearch" data-i18n-ph="ph.student"></div>
+      <div id="studentOut"></div>
+    </div>
   </section>
 
   <section class="card muted-card">
     <div class="row wrap">
-      <button id="exportCfg" class="btn small">Save settings to file</button>
-      <label class="file-btn small">Load settings file<input type="file" id="importCfg" accept=".json"></label>
-      <button id="resetCfg" class="btn small danger">Reset this tab to defaults</button>
-      <button id="resetOrder" class="btn small">Reset section order</button>
-      <span class="muted">Settings and fixed exams are saved automatically in this browser.</span>
+      <button id="exportCfg" class="btn small" data-i18n="cfg.save"></button>
+      <label class="file-btn small"><span data-i18n="cfg.load"></span><input type="file" id="importCfg" accept=".json"></label>
+      <button id="resetCfg" class="btn small danger" data-i18n="cfg.reset"></button>
+      <button id="resetOrder" class="btn small" data-i18n="cfg.resetOrder"></button>
+      <span class="muted" data-i18n="cfg.auto"></span>
       <span id="cfgMsg"></span>
     </div>
   </section>

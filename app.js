@@ -2,12 +2,10 @@
 (function () {
   'use strict';
   const STORE = 'nmu-exam-scheduler-v1';
-  const WD = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const $ = id => document.getElementById(id);
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const normCode = s => String(s == null ? '' : s).toUpperCase().replace(/[\s_\-–]+/g, '');
 
-  const ADJ_FINAL = 20;
   const DEFAULTS = {
     midterm: {
       start: '2026-11-07', end: '2026-11-12', weekdays: [6, 0, 1, 2, 3, 4], holidays: [], extraDays: ['2026-11-14'],
@@ -30,7 +28,7 @@
     final: {
       start: '2027-01-02', end: '2027-01-21', weekdays: [6, 0, 1, 2, 3, 4], holidays: [], extraDays: [],
       slots: ['10:00-12:00', '13:00-15:00'],
-      capacity: 0, maxPerDay: 2, adjPen: ADJ_FINAL, pen2: 3000, pen3: 3000, pen4: 3000, extraPen: 20, excluded: '',
+      capacity: 0, maxPerDay: 2, adjPen: 20, pen2: 3000, pen3: 3000, pen4: 3000, extraPen: 20, excluded: '',
       iterations: 300000, restarts: 4, balance: 0.05, rooms: defaultRooms(30, 25), fixed: []
     }
   };
@@ -39,6 +37,7 @@
   let state = load();
   let mode = state.mode || 'midterm';
   let worker = null;
+  const typingRows = new Set(); // fixed-exam rows where the code is being typed instead of picked
 
   function load() {
     let s = null;
@@ -50,11 +49,14 @@
     s.results = s.results || {};
     s.extra = s.extra || [];
     s.order = Array.isArray(s.order) ? s.order : [];
+    s.folded = s.folded || {};
+    s.lang = s.lang === 'ar' ? 'ar' : 'en';
+    s.theme = ['light', 'dark'].includes(s.theme) ? s.theme : 'auto';
     return s;
   }
-  function defaultRooms(n, seats) { return Array.from({ length: n }, (_, i) => ({ name: 'Room ' + (i + 1), seats })); }
+  function defaultRooms(n, seats, name) { return Array.from({ length: n }, (_, i) => ({ name: (name || 'Room {n}').replace('{n}', i + 1), seats })); }
   const roomSeats = () => cfg().rooms.reduce((t, r) => t + (Math.max(0, +r.seats) || 0), 0);
-  // seats per time slot = all rooms together (no rooms = no limit)
+  // seats per exam time = all rooms together (no rooms = no limit)
   const seatLimit = () => (cfg().rooms.length ? roomSeats() : 0);
 
   function save() {
@@ -67,10 +69,57 @@
   function clone(o) { return JSON.parse(JSON.stringify(o)); }
   const cfg = () => state.cfg[mode];
 
+  // ---------------- language ----------------
+  function t(key, vars) {
+    const d = window.I18N[state.lang], v = d[key] != null ? d[key] : window.I18N.en[key];
+    if (typeof v !== 'string') return v == null ? key : v;
+    return vars ? v.replace(/\{(\w+)\}/g, (m, k) => (vars[k] != null ? vars[k] : m)) : v;
+  }
+  const examsLabel = n => (n === 1 ? t('exams.1') : n === 2 && state.lang === 'ar' ? t('exams.2') : t('exams.n', { n }));
+  const tabName = m => t(m === 'final' ? 'tab.final' : 'tab.midterm');
+  const locale = () => (state.lang === 'ar' ? 'ar-EG' : 'en-GB');
+  function applyLang() {
+    const html = document.documentElement;
+    html.lang = state.lang; html.dir = state.lang === 'ar' ? 'rtl' : 'ltr';
+    document.querySelectorAll('[data-i18n]').forEach(el => (el.textContent = t(el.dataset.i18n)));
+    document.querySelectorAll('[data-i18n-html]').forEach(el => (el.innerHTML = t(el.dataset.i18nHtml)));
+    document.querySelectorAll('[data-i18n-ph]').forEach(el => (el.placeholder = t(el.dataset.i18nPh)));
+    $('langBtn').textContent = t('lang.switch'); $('langBtn').title = t('lang.label');
+    document.querySelectorAll('.mv-up').forEach(b => { b.title = t('mv.up'); b.setAttribute('aria-label', t('mv.up')); });
+    document.querySelectorAll('.mv-down').forEach(b => { b.title = t('mv.down'); b.setAttribute('aria-label', t('mv.down')); });
+    document.querySelectorAll('.fold-btn').forEach(b => { b.title = t('fold'); b.setAttribute('aria-label', t('fold')); });
+    // option lists that carry words
+    $('maxPerDay').innerHTML = [1, 2, 3, 4, 5].map(n => `<option value="${n}">${examsLabel(n)}</option>`).join('');
+    document.querySelectorAll('select.lvl').forEach(sel => (sel.innerHTML = [0, 2, 20, 100, 3000].map(v => `<option value="${v}">${t('lvl.' + v)}</option>`).join('')));
+    $('adjPen').innerHTML = [[0, 'lvl.0'], [3, 'lvl.2'], [20, 'lvl.20'], [50, 'lvl.100']].map(([v, k]) => `<option value="${v}">${t(k)}</option>`).join('');
+    $('extraPen').innerHTML = [0, 20, 100].map(v => `<option value="${v}">${t('ext.' + v)}</option>`).join('');
+    renderThemeBtn();
+  }
+  $('langBtn').onclick = () => { state.lang = state.lang === 'ar' ? 'en' : 'ar'; save(); applyLang(); renderAll(); };
+
+  // ---------------- theme ----------------
+  let themeSetByPage = false;
+  function applyTheme() {
+    const root = document.documentElement;
+    if (state.theme === 'auto') { if (themeSetByPage) root.removeAttribute('data-theme'); themeSetByPage = false; }
+    else { root.setAttribute('data-theme', state.theme); themeSetByPage = true; }
+    renderThemeBtn();
+  }
+  function renderThemeBtn() {
+    const icon = { auto: '◐', light: '☀', dark: '☾' }[state.theme];
+    $('themeBtn').textContent = icon + ' ' + t('theme.' + state.theme);
+    $('themeBtn').title = t('theme.label');
+  }
+  $('themeBtn').onclick = () => {
+    state.theme = { auto: 'light', light: 'dark', dark: 'auto' }[state.theme]; save(); applyTheme();
+  };
+
   // ---------------- dates ----------------
   const parseISO = s => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s); return m ? Date.UTC(+m[1], +m[2] - 1, +m[3]) : NaN; };
-  const iso = t => new Date(t).toISOString().slice(0, 10);
-  const wdName = s => WD[new Date(parseISO(s)).getUTCDay()];
+  const iso = x => new Date(x).toISOString().slice(0, 10);
+  const wdIdx = s => new Date(parseISO(s)).getUTCDay();
+  const wdName = s => t('wd')[wdIdx(s)];
+  const wdShort = s => t('wdShort')[wdIdx(s)];
   const fmtDate = s => { const [y, m, d] = s.split('-'); return `${+d}/${+m}/${y}`; };
   function parseAnyDate(s) {
     s = String(s).trim();
@@ -90,9 +139,9 @@
     const a = parseISO(c.start), b = parseISO(c.end);
     const hol = new Set(c.holidays.map(parseAnyDate).filter(Boolean));
     if (!isNaN(a) && !isNaN(b) && b >= a && b - a < 400 * 864e5) {
-      for (let t = a; t <= b; t += 864e5) {
-        const d = iso(t);
-        if (c.weekdays.includes(new Date(t).getUTCDay()) && !hol.has(d)) out.push({ date: d, extra: false });
+      for (let x = a; x <= b; x += 864e5) {
+        const d = iso(x);
+        if (c.weekdays.includes(new Date(x).getUTCDay()) && !hol.has(d)) out.push({ date: d, extra: false });
       }
     }
     for (const e of c.extraDays) {
@@ -116,16 +165,16 @@
   $('enrFile').addEventListener('change', async e => {
     const f = e.target.files[0];
     if (!f) return;
-    $('enrInfo').textContent = 'Reading…';
+    $('enrInfo').textContent = t('enroll.reading');
     try {
       const wb = XLSX.read(await f.arrayBuffer(), { type: 'array' });
       const ws = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
-      if (!rows.length) throw new Error('The first sheet is empty.');
+      if (!rows.length) throw new Error(t('enroll.empty'));
       pendingRows = { rows, fileName: f.name };
       showColMap(Object.keys(rows[0]));
     } catch (err) {
-      $('enrInfo').innerHTML = `<span class="err">Could not read file: ${esc(err.message)}</span>`;
+      $('enrInfo').innerHTML = `<span class="err">${esc(t('enroll.readErr', { msg: err.message }))}</span>`;
     }
     e.target.value = '';
   });
@@ -136,17 +185,17 @@
   }
   function showColMap(headers) {
     const box = $('colMap');
-    const labels = { id: 'Student ID *', code: 'Course code *', title: 'Course title', name: 'Student name', program: 'Program', level: 'Level' };
-    box.innerHTML = Object.keys(labels).map(k => {
+    const keys = ['id', 'code', 'title', 'name', 'program', 'level'];
+    box.innerHTML = keys.map(k => {
       const g = guess(headers, COLS[k]);
-      return `<label>${labels[k]}<select data-col="${k}"><option value="">—</option>${headers.map(h => `<option ${h === g ? 'selected' : ''}>${esc(h)}</option>`).join('')}</select></label>`;
-    }).join('') + '<button class="btn primary" id="useCols">Use this file</button>';
+      return `<label>${esc(t('col.' + k))}<select data-col="${k}"><option value="">—</option>${headers.map(h => `<option ${h === g ? 'selected' : ''}>${esc(h)}</option>`).join('')}</select></label>`;
+    }).join('') + `<button class="btn primary" id="useCols">${esc(t('enroll.use'))}</button>`;
     box.classList.remove('hidden');
-    $('enrInfo').textContent = `${pendingRows.fileName}: ${pendingRows.rows.length} rows. Check the columns, then press “Use this file”.`;
+    $('enrInfo').textContent = t('enroll.check', { file: pendingRows.fileName, n: pendingRows.rows.length });
     $('useCols').onclick = () => {
       const map = {};
       box.querySelectorAll('select').forEach(s => (map[s.dataset.col] = s.value));
-      if (!map.id || !map.code) { $('enrInfo').innerHTML = '<span class="err">Choose the Student ID and Course code columns first.</span>'; return; }
+      if (!map.id || !map.code) { $('enrInfo').innerHTML = `<span class="err">${esc(t('enroll.needCols'))}</span>`; return; }
       buildEnrollment(pendingRows.rows, map, pendingRows.fileName);
       box.classList.add('hidden');
     };
@@ -155,7 +204,6 @@
   function buildEnrollment(rows, map, fileName) {
     const subType = Object.keys(rows[0]).find(h => /sub\s*type/i.test(h)); // old PUA format: keep lectures only
     const students = [], sIdx = new Map(), courses = {};
-    let used = 0;
     for (const r of rows) {
       if (subType && String(r[subType]).trim() && String(r[subType]).trim().toUpperCase() !== 'LECT') continue;
       const id = String(r[map.id]).trim(), code = normCode(r[map.code]);
@@ -167,7 +215,7 @@
       const c = courses[code] || (courses[code] = { title: '', students: [] });
       if (!c.title && map.title) c.title = String(r[map.title]).trim();
       const si = sIdx.get(id);
-      if (!c.students.includes(si)) { c.students.push(si); used++; }
+      if (!c.students.includes(si)) c.students.push(si);
     }
     state.enr = { fileName, students, courses, loadedAt: new Date().toISOString() };
     state.results = {};
@@ -182,7 +230,7 @@
     const idx = new Map(students.map((s, i) => [s.id, i]));
     for (const x of state.extra) {
       const code = normCode(x.code); if (!code) continue;
-      const ids = String(x.ids || '').split(/[\s,;]+/).map(t => t.trim()).filter(Boolean);
+      const ids = String(x.ids || '').split(/[\s,;]+/).map(v => v.trim()).filter(Boolean);
       const list = courses[code] ? courses[code].students.slice() : [];
       for (const id of ids) {
         if (!idx.has(id)) { idx.set(id, students.length); students.push({ id, name: '', program: '', level: '' }); }
@@ -197,27 +245,34 @@
     return { students, courses, fileName: base.fileName, loadedAt: base.loadedAt };
   }
 
+  function renderEnrInfo() {
+    const e = state.enr;
+    if (!e) { $('enrInfo').textContent = t('enroll.none'); return; }
+    $('enrInfo').innerHTML = t('enroll.info', { file: esc(e.fileName), s: e.students.length, c: Object.keys(e.courses).length, when: esc(new Date(e.loadedAt).toLocaleString(locale())) });
+  }
+
+  // ---------------- courses not in the file ----------------
   function renderExtra() {
     const tb = $('extraTbl').querySelector('tbody');
     tb.innerHTML = state.extra.map((x, i) => {
       const n = String(x.ids || '').split(/[\s,;]+/).filter(Boolean).length;
       const inFile = state.enr && state.enr.courses[normCode(x.code)];
-      return `<tr data-i="${i}"><td class="code"><input value="${esc(x.code)}" data-k="code" placeholder="CODE"></td>
-        <td><input value="${esc(x.title)}" data-k="title" placeholder="Course name" style="width:100%"></td>
-        <td><textarea data-k="ids" rows="1" placeholder="optional: student IDs" style="width:100%">${esc(x.ids)}</textarea>
-          <span class="muted">${n} students${inFile ? ' (added to the ' + inFile.students.length + ' in the file)' : ''}</span></td>
-        <td><button class="icon-btn" data-del="${i}" title="Remove">×</button></td></tr>`;
-    }).join('') || '<tr><td colspan="4" class="muted">None. Use this for courses that are not in the Excel file.</td></tr>';
+      return `<tr data-i="${i}"><td class="code"><input value="${esc(x.code)}" data-k="code" placeholder="${esc(t('ph.code'))}" dir="ltr"></td>
+        <td><input value="${esc(x.title)}" data-k="title" placeholder="${esc(t('ph.cname'))}" style="width:100%"></td>
+        <td><textarea data-k="ids" rows="1" placeholder="${esc(t('ph.ids'))}" style="width:100%" dir="ltr">${esc(x.ids)}</textarea>
+          <span class="muted">${esc(t('extra.count', { n }))}${inFile ? esc(t('extra.added', { n: inFile.students.length })) : ''}</span></td>
+        <td><button class="icon-btn" data-del="${i}" title="${esc(t('btn.remove'))}">×</button></td></tr>`;
+    }).join('') || `<tr><td colspan="4" class="muted">${esc(t('extra.none'))}</td></tr>`;
   }
   $('extraTbl').addEventListener('change', ev => {
     const tr = ev.target.closest('tr'); if (!tr || !ev.target.dataset.k) return;
     const x = state.extra[+tr.dataset.i], k = ev.target.dataset.k;
     x[k] = k === 'code' ? normCode(ev.target.value) : ev.target.value;
-    save(); renderExtra(); renderEnrInfo(); renderFixed();
+    save(); renderExtra(); renderFixed();
   });
   $('extraTbl').addEventListener('click', ev => {
     const d = ev.target.dataset.del; if (d == null) return;
-    state.extra.splice(+d, 1); save(); renderExtra(); renderEnrInfo(); renderFixed();
+    state.extra.splice(+d, 1); save(); renderExtra(); renderFixed();
   });
   $('addExtra').onclick = () => {
     state.extra.push({ code: '', title: '', ids: '' }); save(); renderExtra();
@@ -228,15 +283,15 @@
   function renderRooms() {
     const n = cfg().rooms.length, total = roomSeats();
     const other = mode === 'final' ? 'midterm' : 'final';
-    $('roomsFor').textContent = mode === 'final' ? 'The Final tab' : 'The Midterm tab';
-    $('copyRooms').textContent = `Copy rooms from ${other === 'final' ? 'Final' : 'Midterm'}`;
-    $('roomTotal').innerHTML = n ? `<b>${n}</b> rooms · <b>${total}</b> seats per exam time` : '<span class="warn">No rooms: seats are not limited.</span>';
-    $('seatInfo').textContent = n ? `${total} seats` : 'No limit (no rooms)';
+    $('roomsHint').innerHTML = t('rooms.hint', { tab: esc(t(mode === 'final' ? 'rooms.forFinal' : 'rooms.forMid')) });
+    $('copyRooms').textContent = t('rooms.copy', { tab: tabName(other) });
+    $('roomTotal').innerHTML = n ? t('rooms.total', { n, s: total }) : `<span class="warn">${esc(t('rooms.noneWarn'))}</span>`;
+    $('seatInfo').textContent = n ? t('seat.info', { n: total }) : t('seat.none');
     $('roomTbl').querySelector('tbody').innerHTML = cfg().rooms.map((r, i) => `<tr data-i="${i}">
-      <td><input value="${esc(r.name)}" data-k="name" aria-label="Room name"></td>
-      <td><input type="number" min="0" value="${esc(r.seats)}" data-k="seats" class="seats" aria-label="Seats"></td>
-      <td><button class="icon-btn" data-del="${i}" title="Remove room">×</button></td></tr>`).join('') ||
-      '<tr><td colspan="3" class="muted">No rooms yet.</td></tr>';
+      <td><input value="${esc(r.name)}" data-k="name" aria-label="${esc(t('th.room'))}"></td>
+      <td><input type="number" min="0" value="${esc(r.seats)}" data-k="seats" class="seats" aria-label="${esc(t('th.seats'))}"></td>
+      <td><button class="icon-btn" data-del="${i}" title="${esc(t('btn.remove'))}">×</button></td></tr>`).join('') ||
+      `<tr><td colspan="3" class="muted">${esc(t('rooms.empty'))}</td></tr>`;
   }
   $('roomTbl').addEventListener('change', ev => {
     const tr = ev.target.closest('tr'); if (!tr || !ev.target.dataset.k) return;
@@ -251,18 +306,18 @@
   });
   $('addRoom').onclick = () => {
     const seats = parseInt($('roomSeats').value, 10) || 25;
-    cfg().rooms.push({ name: 'Room ' + (cfg().rooms.length + 1), seats }); save(); renderRooms(); renderResults();
+    cfg().rooms.push({ name: t('rooms.name', { n: cfg().rooms.length + 1 }), seats }); save(); renderRooms(); renderResults();
   };
   $('makeRooms').onclick = () => {
     const btn = $('makeRooms');
     if (cfg().rooms.length && !btn.dataset.armed) {
-      btn.dataset.armed = '1'; btn.textContent = 'Click again to replace all rooms';
-      setTimeout(() => { delete btn.dataset.armed; btn.textContent = 'Set rooms'; }, 4000);
+      btn.dataset.armed = '1'; btn.textContent = t('rooms.setConfirm');
+      setTimeout(() => { delete btn.dataset.armed; btn.textContent = t('rooms.set'); }, 4000);
       return;
     }
-    delete btn.dataset.armed; btn.textContent = 'Set rooms';
+    delete btn.dataset.armed; btn.textContent = t('rooms.set');
     const n = Math.max(0, Math.min(500, parseInt($('roomCount').value, 10) || 0));
-    cfg().rooms = defaultRooms(n, Math.max(1, parseInt($('roomSeats').value, 10) || 25));
+    cfg().rooms = defaultRooms(n, Math.max(1, parseInt($('roomSeats').value, 10) || 25), t('rooms.name'));
     save(); renderRooms(); renderResults();
   };
   $('copyRooms').onclick = () => {
@@ -290,7 +345,7 @@
         let k = 0;
         while (k < sts.length) {
           while (ri < rooms.length && rooms[ri].left <= 0) ri++;
-          if (ri >= rooms.length) { overflow[g] = (overflow[g] || 0) + (sts.length - k); for (; k < sts.length; k++) studentRoom[code + '|' + sts[k]] = 'NO ROOM'; break; }
+          if (ri >= rooms.length) { overflow[g] = (overflow[g] || 0) + (sts.length - k); for (; k < sts.length; k++) studentRoom[code + '|' + sts[k]] = t('noRoom'); break; }
           const take = Math.min(rooms[ri].left, sts.length - k);
           const part = { code, count: take, from: e.students[sts[k]].id, to: e.students[sts[k + take - 1]].id };
           for (let j = 0; j < take; j++) studentRoom[code + '|' + sts[k + j]] = rooms[ri].name;
@@ -304,36 +359,23 @@
 
   function renderRoomPlan(cr) {
     const { r } = cr, e = enr(), S = r.slots.length;
-    if (!cfg().rooms.length) { $('roomPlan').innerHTML = '<p class="muted">Add rooms in the exam rooms board to get a room plan.</p>'; return; }
+    if (!cfg().rooms.length) { $('roomPlan').innerHTML = `<p class="muted">${esc(t('roomplan.none'))}</p>`; return; }
     const { plan, overflow } = allocateRooms(r, e);
     let html = '';
     r.days.forEach((d, di) => r.slots.forEach((sl, s) => {
       const g = di * S + s, rooms = plan[g]; if (!rooms) return;
-      html += `<div class="room-cell"><div class="room-head"><b>${wdName(d.date)} ${fmtDate(d.date)}</b> · ${esc(sl)} · ${rooms.length} rooms` +
-        (overflow[g] ? ` <span class="badge b4">${overflow[g]} students without a room</span>` : '') + '</div><div class="room-list">' +
+      html += `<div class="room-cell"><div class="room-head"><b>${esc(wdName(d.date))} ${fmtDate(d.date)}</b> · <span dir="ltr">${esc(sl)}</span> · ${esc(t('roomplan.rooms', { n: rooms.length }))}` +
+        (overflow[g] ? ` <span class="badge b4">${esc(t('roomplan.over', { n: overflow[g] }))}</span>` : '') + '</div><div class="room-list">' +
         rooms.map(x => `<span class="room"><b>${esc(x.name)}</b> ${x.parts.map(p => `${esc(p.code)} <small>(${p.count})</small>`).join(' + ')}</span>`).join('') + '</div></div>';
     }));
     $('roomPlan').innerHTML = html;
   }
 
-  function renderEnrInfo() {
-    const e = state.enr;
-    if (!e) { $('enrInfo').textContent = 'No file loaded.'; return; }
-    const n = Object.keys(e.courses).length;
-    $('enrInfo').innerHTML = `<b>${esc(e.fileName)}</b> — ${e.students.length} students, ${n} courses <span class="muted">(loaded ${new Date(e.loadedAt).toLocaleString()})</span>`;
-    let dl = document.getElementById('codeList');
-    if (!dl) { dl = document.createElement('datalist'); dl.id = 'codeList'; document.body.appendChild(dl); }
-    const all = enr().courses;
-    dl.innerHTML = Object.keys(all).sort().map(c => `<option value="${esc(c)}">${esc(all[c].title)}</option>`).join('');
-  }
-
   // ---------------- settings form ----------------
-  const LEVELS = [[0, 'Allowed'], [2, 'Avoid a little'], [20, 'Avoid'], [100, 'Avoid strongly'], [3000, 'Avoid as much as possible']];
-  document.querySelectorAll('select.lvl').forEach(sel => (sel.innerHTML = LEVELS.map(([v, t]) => `<option value="${v}">${t}</option>`).join('')));
   // show the stored value even if it is not one of the listed choices
   function setSelect(sel, v) {
     [...sel.querySelectorAll('option.custom')].forEach(o => o.remove());
-    if (![...sel.options].some(o => +o.value === +v)) sel.insertAdjacentHTML('beforeend', `<option class="custom" value="${v}">Custom (${v})</option>`);
+    if (![...sel.options].some(o => +o.value === +v)) sel.insertAdjacentHTML('beforeend', `<option class="custom" value="${v}">${esc(t('custom', { v }))}</option>`);
     sel.value = String(+v);
   }
   function showRuleRows() {
@@ -351,7 +393,7 @@
     NUM_FIELDS.forEach(k => { const el = $(k); if (el.tagName === 'SELECT') setSelect(el, c[k]); else el.value = c[k]; });
     showRuleRows();
     $('weekdays').innerHTML = [6, 0, 1, 2, 3, 4, 5].map(d =>
-      `<label class="wd"><input type="checkbox" value="${d}" ${c.weekdays.includes(d) ? 'checked' : ''}>${WD[d].slice(0, 3)}</label>`).join('');
+      `<label class="wd"><input type="checkbox" value="${d}" ${c.weekdays.includes(d) ? 'checked' : ''}>${esc(t('wdShort')[d])}</label>`).join('');
     renderDays();
   }
   function readForm() {
@@ -368,64 +410,95 @@
   function renderDays() {
     const days = examDays(cfg());
     const xmas = days.filter(d => !d.extra && d.date.slice(5) === '01-07').map(d => d.date);
-    $('holidayTip').innerHTML = xmas.map(d => `<div class="warn">Recommended: ${wdName(d)} ${fmtDate(d)} is usually a holiday (Coptic Christmas). <button class="btn small" data-hol="${d}">Make it a holiday</button></div>`).join('');
+    $('holidayTip').innerHTML = xmas.map(d => `<div class="warn">${esc(t('period.xmas', { day: wdName(d) + ' ' + fmtDate(d) }))} <button class="btn small" data-hol="${d}">${esc(t('period.makeHoliday'))}</button></div>`).join('');
     $('dayList').innerHTML = days.length
-      ? `<span class="muted" style="background:none">${days.length} exam days:</span>` + days.map(d => `<span class="${d.extra ? 'extra' : ''}">${WD[new Date(parseISO(d.date)).getUTCDay()].slice(0, 3)} ${fmtDate(d.date)}${d.extra ? ' (extra)' : ''}</span>`).join('')
-      : '<span class="err">No exam days — check the dates.</span>';
+      ? `<span class="muted" style="background:none">${esc(t('period.count', { n: days.length }))}</span>` + days.map(d => `<span class="${d.extra ? 'extra' : ''}">${esc(wdShort(d.date))} ${fmtDate(d.date)}${d.extra ? esc(t('period.extraTag')) : ''}</span>`).join('')
+      : `<span class="err">${esc(t('period.noDays'))}</span>`;
   }
   document.querySelectorAll('section.card input, section.card textarea, section.card select').forEach(el => {
-    if (el.closest('#fixedTbl') || el.closest('#results') || el.closest('#colMap') || el.type === 'file' || el.id === 'pasteFixed') return;
+    if (el.closest('#fixedTbl') || el.closest('#results') || el.closest('#colMap') || el.closest('#extraTbl') || el.closest('#roomTbl') ||
+      el.type === 'file' || ['pasteFixed', 'roomCount', 'roomSeats'].includes(el.id)) return;
     el.addEventListener('change', () => { readForm(); renderDays(); renderFixed(); showRuleRows(); });
   });
   $('holidayTip').addEventListener('click', ev => {
     const d = ev.target.dataset.hol; if (!d) return;
+    ev.preventDefault();
     cfg().holidays.push(d); save(); renderForm(); renderFixed();
   });
   $('weekdays').addEventListener('change', () => { readForm(); renderDays(); renderFixed(); });
 
   // ---------------- fixed exams ----------------
-  function slotLabel(i) { return cfg().slots[i] || `Slot ${i + 1}`; }
+  // course list for the picker: enrollment file, then courses added by hand, then any other fixed codes
+  function courseSelect(cur) {
+    const fileC = state.enr ? state.enr.courses : {};
+    const all = enr().courses;
+    const fixedCodes = new Set(cfg().fixed.map(f => f.code));
+    const fileCodes = Object.keys(fileC).sort();
+    const handCodes = [...new Set(state.extra.map(x => normCode(x.code)).filter(c => c && !fileC[c]))].sort();
+    const known = new Set([...fileCodes, ...handCodes]);
+    const otherCodes = [...fixedCodes].filter(c => c && !known.has(c)).sort();
+    const opt = c => {
+      const x = all[c], n = x ? x.students.length : 0;
+      const tail = (x && x.title ? ' — ' + x.title : '') + ` (${n})` + (c !== cur && fixedCodes.has(c) ? ' · ' + t('fixed.already') : '');
+      return `<option value="${esc(c)}" ${c === cur ? 'selected' : ''}>${esc(c + tail)}</option>`;
+    };
+    const grp = (label, codes) => (codes.length ? `<optgroup label="${esc(label)}">${codes.map(opt).join('')}</optgroup>` : '');
+    return `<select data-k="code" class="course-pick"><option value="" ${cur ? '' : 'selected'}>${esc(t('fixed.pick'))}</option>` +
+      grp(t('fixed.grpFile'), fileCodes) + grp(t('fixed.grpHand'), handCodes) + grp(t('fixed.grpOther'), otherCodes) +
+      `<option value="__type__">${esc(t('fixed.typeOther'))}</option></select>`;
+  }
   function renderFixed() {
-    const c = cfg(), days = examDays(c), e = state.enr ? enr() : null;
+    const c = cfg(), days = examDays(c), e = state.enr || state.extra.length ? enr() : null;
+    const hasList = !!(state.enr || state.extra.length);
     const tb = $('fixedTbl').querySelector('tbody');
     tb.innerHTML = c.fixed.map((f, i) => {
       const course = e && e.courses[normCode(f.code)];
       const inDays = days.some(d => d.date === f.date);
-      const dayOpts = (inDays ? '' : `<option value="${esc(f.date)}" selected>${f.date ? fmtDate(f.date) + ' (not an exam day!)' : '— choose —'}</option>`) +
-        days.map(d => `<option value="${d.date}" ${d.date === f.date ? 'selected' : ''}>${wdName(d.date)} ${fmtDate(d.date)}</option>`).join('');
+      const dayOpts = (inDays ? '' : `<option value="${esc(f.date)}" selected>${esc(f.date ? fmtDate(f.date) + t('fixed.notDay') : t('fixed.chooseDay'))}</option>`) +
+        days.map(d => `<option value="${d.date}" ${d.date === f.date ? 'selected' : ''}>${esc(wdName(d.date))} ${fmtDate(d.date)}</option>`).join('');
       const slotOpts = c.slots.map((s, si) => `<option value="${si}" ${si === f.slot ? 'selected' : ''}>${esc(s)}</option>`).join('');
-      const info = !f.code ? '' : course && !course.manual ? esc(course.title) : course && course.title ? esc(course.title) + ' <span class="muted">(added by hand)</span>' : (e ? '<span class="muted">not in the file — 0 students</span>' : '');
+      const info = !f.code ? '' : course && !course.manual ? esc(course.title)
+        : course && course.title ? esc(course.title) + ` <span class="muted">${esc(t('fixed.byHand'))}</span>`
+        : (e ? `<span class="muted">${esc(t('fixed.notInFile'))}</span>` : '');
+      const codeCell = hasList && !typingRows.has(i) ? courseSelect(f.code)
+        : `<input value="${esc(f.code)}" data-k="code" placeholder="${esc(t('ph.code'))}" dir="ltr">` +
+          (hasList ? ` <button class="link-btn" data-list="${i}">${esc(t('fixed.backToList'))}</button>` : '');
       return `<tr data-i="${i}">
-        <td class="code"><input list="codeList" value="${esc(f.code)}" data-k="code" placeholder="CODE"></td>
+        <td class="code">${codeCell}</td>
         <td>${info}</td><td>${course ? course.students.length : ''}</td>
         <td><select data-k="date">${dayOpts}</select></td>
         <td><select data-k="slot">${slotOpts}</select></td>
-        <td><button class="icon-btn" data-del="${i}" title="Remove">×</button></td></tr>`;
-    }).join('') || '<tr><td colspan="6" class="muted">No fixed exams yet.</td></tr>';
+        <td><button class="icon-btn" data-del="${i}" title="${esc(t('btn.remove'))}">×</button></td></tr>`;
+    }).join('') || `<tr><td colspan="6" class="muted">${esc(t('fixed.none'))}</td></tr>`;
   }
-  $('fixedTbl').addEventListener('change', e => {
-    const tr = e.target.closest('tr'); if (!tr) return;
-    const f = cfg().fixed[+tr.dataset.i], k = e.target.dataset.k;
-    if (k === 'code') f.code = normCode(e.target.value);
-    else if (k === 'date') f.date = e.target.value;
-    else if (k === 'slot') f.slot = +e.target.value;
+  $('fixedTbl').addEventListener('change', ev => {
+    const tr = ev.target.closest('tr'); if (!tr) return;
+    const i = +tr.dataset.i, f = cfg().fixed[i], k = ev.target.dataset.k;
+    if (k === 'code') {
+      if (ev.target.value === '__type__') { typingRows.add(i); renderFixed(); const inp = $('fixedTbl').querySelector(`tr[data-i="${i}"] input`); if (inp) inp.focus(); return; }
+      f.code = normCode(ev.target.value); typingRows.delete(i);
+    } else if (k === 'date') f.date = ev.target.value;
+    else if (k === 'slot') f.slot = +ev.target.value;
     save(); renderFixed();
   });
-  $('fixedTbl').addEventListener('click', e => {
-    const d = e.target.dataset.del; if (d == null) return;
-    cfg().fixed.splice(+d, 1); save(); renderFixed();
+  $('fixedTbl').addEventListener('click', ev => {
+    const l = ev.target.dataset.list;
+    if (l != null) { typingRows.delete(+l); renderFixed(); return; }
+    const d = ev.target.dataset.del; if (d == null) return;
+    cfg().fixed.splice(+d, 1); typingRows.clear(); save(); renderFixed();
   });
   $('addFixed').onclick = () => {
     const days = examDays(cfg());
     cfg().fixed.push({ code: '', date: days[0] ? days[0].date : '', slot: 0 });
     save(); renderFixed();
-    const ins = $('fixedTbl').querySelectorAll('td.code input'); ins[ins.length - 1].focus();
+    const rows = $('fixedTbl').querySelectorAll('td.code');
+    const last = rows[rows.length - 1].querySelector('select, input'); if (last) last.focus();
   };
   $('pasteBtn').onclick = () => {
     const c = cfg(); let ok = 0; const bad = [];
     for (const raw of $('pasteFixed').value.split('\n')) {
       const line = raw.trim(); if (!line) continue;
-      const parts = line.split(/[\s,;\t]+/).filter(Boolean);
+      const parts = line.split(/[\s,;\t،]+/).filter(Boolean);
       const dateTok = parts.find(p => parseAnyDate(p) && /[\/\-.]/.test(p));
       const timeTok = parts.find(p => /^\d{1,2}[:.]\d{2}/.test(p) && p !== dateTok);
       const codeParts = parts.slice(0, parts.indexOf(dateTok) >= 0 ? Math.min(parts.indexOf(dateTok), 2) : 2).filter(p => p !== timeTok);
@@ -438,11 +511,11 @@
       ok++;
     }
     save(); renderFixed();
-    $('pasteMsg').innerHTML = `${ok} added.` + (bad.length ? ` <span class="err">Could not read: ${bad.map(esc).join(' | ')}</span>` : '');
+    $('pasteMsg').innerHTML = esc(t('paste.done', { n: ok })) + (bad.length ? ` <span class="err">${esc(t('paste.bad', { x: bad.join(' | ') }))}</span>` : '');
     if (!bad.length) $('pasteFixed').value = '';
   };
-  function matchSlot(t) {
-    const m = /^(\d{1,2})[:.](\d{2})/.exec(t); if (!m) return -1;
+  function matchSlot(x) {
+    const m = /^(\d{1,2})[:.](\d{2})/.exec(x); if (!m) return -1;
     const mins = h => +h.split(':')[0] * 60 + +h.split(':')[1];
     const starts = cfg().slots.map(s => mins(s.split('-')[0].trim()));
     for (const h of [+m[1], +m[1] + 12]) { const i = starts.indexOf(h * 60 + +m[2]); if (i >= 0) return i; }
@@ -453,29 +526,28 @@
   function buildInput() {
     const c = cfg(), e = state.enr || state.extra.length ? enr() : null, days = examDays(c);
     const errors = [], warnings = [];
-    if (!e) errors.push('Upload the enrollment Excel file first.');
-    if (!days.length) errors.push('There are no exam days. Check the first/last day and weekdays.');
-    if (!c.slots.length) errors.push('Add at least one exam time.');
+    if (!e) errors.push(t('err.noEnr'));
+    if (!days.length) errors.push(t('err.noDays'));
+    if (!c.slots.length) errors.push(t('err.noSlots'));
     if (errors.length) return { errors, warnings };
     const excluded = new Set(lines(c.excluded).map(normCode));
     const codes = Object.keys(e.courses).filter(k => !excluded.has(k)).sort();
     const courses = codes.map(code => ({ code, students: e.courses[code].students }));
-    const fixed = {}, external = [];
+    const fixed = {};
     for (const f of c.fixed) {
       if (!f.code) continue;
       const d = days.findIndex(x => x.date === f.date);
-      if (d < 0) { errors.push(`Fixed exam ${f.code}: ${f.date ? fmtDate(f.date) : 'no date'} is not one of the exam days.`); continue; }
-      if (f.slot >= c.slots.length) { errors.push(`Fixed exam ${f.code}: time slot no longer exists.`); continue; }
-      if (fixed[f.code]) warnings.push(`${f.code} is listed twice in fixed exams; the last one is used.`);
+      if (d < 0) { errors.push(t('err.fixedDay', { c: f.code, d: f.date ? fmtDate(f.date) : t('err.noDate') })); continue; }
+      if (f.slot >= c.slots.length) { errors.push(t('err.fixedSlot', { c: f.code })); continue; }
+      if (fixed[f.code]) warnings.push(t('warn.twice', { c: f.code }));
       if (!excluded.has(f.code)) fixed[f.code] = [d, f.slot];
     }
     const zero = codes.filter(k => !e.courses[k].students.length);
-    if (zero.length) warnings.push(`Courses with 0 students (scheduled, but nobody is affected): ${zero.join(', ')}`);
-    const totalSlots = days.length * c.slots.length;
-    if (courses.length > totalSlots * 20) warnings.push('Very few slots for the number of courses.');
+    if (zero.length) warnings.push(t('warn.zero', { list: zero.join(', ') }));
+    if (courses.length > days.length * c.slots.length * 20) warnings.push(t('warn.few'));
     const dayPen = [0, 0, c.pen2, c.pen3, c.pen4];
     return {
-      errors, warnings, external,
+      errors, warnings,
       input: {
         courses, nStudents: e.students.length, days, nSlots: c.slots.length, fixed,
         config: { capacity: seatLimit(), dayPen, maxPerDay: Math.max(1, c.maxPerDay), adjPen: c.adjPen, extraPen: c.extraPen, balance: c.balance, iterations: c.iterations, restarts: Math.max(1, Math.min(10, c.restarts | 0)) }
@@ -493,19 +565,17 @@
     try { worker = new Worker('solver.js'); }
     catch (err) { worker = mainThreadWorker(); }
     $('run').disabled = true; $('progress').classList.remove('hidden');
-    $('runMsg').textContent = 'Working…';
-    const t0 = Date.now();
+    $('runMsg').textContent = t('run.working');
+    const t0 = Date.now(), runMode = mode;
     worker.onmessage = ev => {
       const m = ev.data;
       if (m.type === 'progress') { $('progress').firstElementChild.style.width = Math.round(m.p * 100) + '%'; }
       else if (m.type === 'done') {
         finishRun();
-        state.results[mode] = {
-          assignment: m.result.assignment, generatedAt: new Date().toISOString(),
-          days: b.input.days, slots: cfg().slots.slice(), external: b.external
-        };
+        state.results[runMode] = { assignment: m.result.assignment, generatedAt: new Date().toISOString(), days: b.input.days, slots: state.cfg[runMode].slots.slice() };
         save();
-        $('runMsg').textContent = `Done in ${((Date.now() - t0) / 1000).toFixed(1)}s.`;
+        $('runMsg').textContent = t('run.done', { s: ((Date.now() - t0) / 1000).toFixed(1) });
+        if (state.folded.results) { state.folded.results = false; save(); applyOrder(); }
         renderResults();
         $('results').scrollIntoView({ behavior: 'smooth' });
       } else if (m.type === 'error') { finishRun(); $('runMsg').innerHTML = `<span class="err">${esc(m.message)}</span>`; }
@@ -548,9 +618,9 @@
     const cr = currentResult();
     if (!cr) { $('results').classList.add('hidden'); return; }
     $('results').classList.remove('hidden');
-    const { r, input, stats } = cr, e = enr(), S = r.slots.length;
+    const { r, stats } = cr, e = enr(), S = r.slots.length;
     const fixedSet = new Set(cfg().fixed.map(f => f.code));
-    $('genAt').textContent = 'Generated ' + new Date(r.generatedAt).toLocaleString() + (r.edited ? ' · edited by hand' : '');
+    $('genAt').textContent = t('gen.at', { when: new Date(r.generatedAt).toLocaleString(locale()) }) + (r.edited ? t('gen.edited') : '');
 
     // summary
     const h = stats.hist, n2 = h[2] || 0, n3 = h[3] || 0, n4 = h[4] || 0;
@@ -558,31 +628,30 @@
     const usedExtra = r.days.filter((d, i) => d.extra && Object.values(r.assignment).some(a => a[0] === i));
     const isFinal = mode === 'final';
     const cards = [
-      [Object.keys(r.assignment).length, 'courses scheduled', ''],
-      [stats.clashes.length, 'same-time clashes', stats.clashes.length ? 'bad' : 'good'],
-      [n2, 'students with 2 exams in a day', isFinal ? (n2 ? 'mid' : 'good') : ''],
-      ...(isFinal ? [[stats.consecutive.length, 'exams on back-to-back days', '']] : [
-        [n3, 'students with 3 exams in a day', n3 ? 'mid' : 'good'],
-        [n4 + n5, 'students with 4+ exams in a day', n4 + n5 ? 'bad' : 'good']]),
-      [stats.overCap.length, 'slots over seat limit', stats.overCap.length ? 'bad' : 'good'],
-      ...(r.days.some(d => d.extra) ? [[usedExtra.length ? usedExtra.map(d => fmtDate(d.date)).join(', ') : 'No', 'extra day used', usedExtra.length ? 'mid' : 'good']] : [])
+      [Object.keys(r.assignment).length, t('stat.courses'), ''],
+      [stats.clashes.length, t('stat.clashes'), stats.clashes.length ? 'bad' : 'good'],
+      [n2, t('stat.n2'), isFinal ? (n2 ? 'mid' : 'good') : ''],
+      ...(isFinal ? [[stats.consecutive.length, t('stat.consec'), '']] : [
+        [n3, t('stat.n3'), n3 ? 'mid' : 'good'],
+        [n4 + n5, t('stat.n4'), n4 + n5 ? 'bad' : 'good']]),
+      [stats.overCap.length, t('stat.over'), stats.overCap.length ? 'bad' : 'good'],
+      ...(r.days.some(d => d.extra) ? [[usedExtra.length ? usedExtra.map(d => fmtDate(d.date)).join(', ') : t('stat.no'), t('stat.extra'), usedExtra.length ? 'mid' : 'good']] : [])
     ];
     $('summary').innerHTML = cards.map(([v, l, c]) => `<div class="stat ${c}"><b>${esc(v)}</b><span>${esc(l)}</span></div>`).join('') +
-      (isFinal && n2 ? `<div class="warn" style="grid-column:1/-1">Some students have 2 finals on one day. This happens when there are more courses sharing students than exam days (see the list below). Add exam days or accept these cases.</div>` : '');
+      (isFinal && n2 ? `<div class="warn" style="grid-column:1/-1">${esc(t('final.warn'))}</div>` : '');
 
     // grid
     const cellCourses = {};
     for (const [code, [d, s]] of Object.entries(r.assignment)) (cellCourses[d * S + s] = cellCourses[d * S + s] || []).push({ code, n: e.courses[code] ? e.courses[code].students.length : 0, fixed: fixedSet.has(code) });
-    for (const x of r.external || []) (cellCourses[x.d * S + x.s] = cellCourses[x.d * S + x.s] || []).push({ code: x.code, n: 0, ext: true });
     const cap = seatLimit();
-    let html = `<tr><th></th>${r.slots.map(s => `<th>${esc(s)}</th>`).join('')}</tr>`;
+    let html = `<tr><th></th>${r.slots.map(s => `<th dir="ltr">${esc(s)}</th>`).join('')}</tr>`;
     r.days.forEach((d, di) => {
-      html += `<tr><th class="day">${wdName(d.date)}<small>${fmtDate(d.date)}${d.extra ? ' · extra' : ''}</small></th>`;
+      html += `<tr><th class="day">${esc(wdName(d.date))}<small>${fmtDate(d.date)}${d.extra ? esc(t('grid.extra')) : ''}</small></th>`;
       for (let s = 0; s < S; s++) {
         const list = (cellCourses[di * S + s] || []).sort((a, b) => b.n - a.n);
         const ld = stats.load[di * S + s];
-        html += `<td class="${d.extra ? 'extra' : ''}">${list.length ? `<div class="cell-load ${cap && ld > cap ? 'over' : ''}">${ld} students${cap ? ' / ' + cap : ''}</div>` : ''}` +
-          list.map(c => `<span class="chip ${c.fixed ? 'fixed' : ''} ${c.ext ? 'ext' : ''}" title="${esc(e.courses[c.code] ? e.courses[c.code].title : 'external')}">${c.fixed || c.ext ? '🔒 ' : ''}${esc(c.code)} <small>${c.ext ? '' : c.n}</small></span>`).join('') + '</td>';
+        html += `<td class="${d.extra ? 'extra' : ''}">${list.length ? `<div class="cell-load ${cap && ld > cap ? 'over' : ''}">${esc(t('grid.students', { n: ld + (cap ? ' / ' + cap : '') }))}</div>` : ''}` +
+          list.map(c => `<span class="chip ${c.fixed ? 'fixed' : ''}" title="${esc(e.courses[c.code] ? e.courses[c.code].title : '')}">${c.fixed ? '🔒 ' : ''}${esc(c.code)} <small>${c.n}</small></span>`).join('') + '</td>';
       }
       html += '</tr>';
     });
@@ -594,13 +663,13 @@
     // heavy days
     const minHeavy = isFinal ? 2 : 3;
     const heavy = stats.heavy.filter(x => x.n >= minHeavy).sort((a, b) => b.n - a.n || a.d - b.d);
-    $('dlHeavy').textContent = isFinal ? 'Students with 2 finals in a day' : 'Students with 3+ exams in a day';
-    $('heavyTitle').textContent = isFinal ? `Students with 2 finals on one day (${heavy.length})` : `Students with 3 or more exams on one day (${heavy.length})`;
+    $('dlHeavy').textContent = t(isFinal ? 'dl.heavy2' : 'dl.heavy3');
+    $('heavyTitle').textContent = t(isFinal ? 'heavy.t2' : 'heavy.t3', { n: heavy.length });
     $('heavyTbl').innerHTML = heavy.length
-      ? `<thead><tr><th>Student ID</th><th>Name</th><th>Day</th><th>Exams</th><th>Courses</th></tr></thead><tbody>` +
-        heavy.map(x => { const st = e.students[x.student]; return `<tr><td>${esc(st.id)}</td><td>${esc(st.name)}</td><td>${wdName(r.days[x.d].date)} ${fmtDate(r.days[x.d].date)}</td><td><span class="badge b${Math.min(x.n, 4)}">${x.n}</span></td><td>${x.codes.map(esc).join(', ')}</td></tr>`; }).join('') + '</tbody>'
-      : '<tbody><tr><td class="ok">None 🎉</td></tr></tbody>';
-    if (stats.clashes.length) $('heavyTbl').innerHTML += `<tbody>${stats.clashes.map(x => `<tr><td colspan="5" class="err">Clash: student ${esc(e.students[x.student].id)} has ${x.codes.join(' and ')} at the same time (${fmtDate(r.days[x.d].date)} ${esc(r.slots[x.s])})</td></tr>`).join('')}</tbody>`;
+      ? `<thead><tr><th>${esc(t('th.sid'))}</th><th>${esc(t('th.name'))}</th><th>${esc(t('th.day'))}</th><th>${esc(t('th.exams'))}</th><th>${esc(t('th.courses'))}</th></tr></thead><tbody>` +
+        heavy.map(x => { const st = e.students[x.student]; return `<tr><td>${esc(st.id)}</td><td>${esc(st.name)}</td><td>${esc(wdName(r.days[x.d].date))} ${fmtDate(r.days[x.d].date)}</td><td><span class="badge b${Math.min(x.n, 4)}">${x.n}</span></td><td>${x.codes.map(esc).join(', ')}</td></tr>`; }).join('') + '</tbody>'
+      : `<tbody><tr><td class="ok">${esc(t('heavy.none'))}</td></tr></tbody>`;
+    if (stats.clashes.length) $('heavyTbl').innerHTML += `<tbody>${stats.clashes.map(x => `<tr><td colspan="5" class="err">${esc(t('clash', { s: e.students[x.student].id, a: x.codes[0], b: x.codes[1], when: fmtDate(r.days[x.d].date) + ' ' + r.slots[x.s] }))}</td></tr>`).join('')}</tbody>`;
     renderStudent();
   }
 
@@ -609,12 +678,12 @@
     const rows = Object.entries(r.assignment)
       .filter(([code]) => !q || code.includes(q) || (e.courses[code] && e.courses[code].title.toUpperCase().includes(q)))
       .sort((a, b) => a[1][0] - b[1][0] || a[1][1] - b[1][1] || a[0].localeCompare(b[0]));
-    $('courseTbl').innerHTML = `<thead><tr><th>🔒</th><th>Code</th><th>Course</th><th>Students</th><th>Day</th><th>Time</th></tr></thead><tbody>` +
+    $('courseTbl').innerHTML = `<thead><tr><th>🔒</th><th>${esc(t('th.codeShort'))}</th><th>${esc(t('th.course'))}</th><th>${esc(t('th.students'))}</th><th>${esc(t('th.day'))}</th><th>${esc(t('th.time'))}</th></tr></thead><tbody>` +
       rows.map(([code, [d, s]]) => `<tr data-code="${esc(code)}">
-        <td><input type="checkbox" data-k="lock" ${fixedSet.has(code) ? 'checked' : ''} title="Keep fixed"></td>
+        <td><input type="checkbox" data-k="lock" ${fixedSet.has(code) ? 'checked' : ''} title="${esc(t('keep'))}"></td>
         <td><b>${esc(code)}</b></td><td>${esc(e.courses[code] ? e.courses[code].title : '')}</td>
         <td>${e.courses[code] ? e.courses[code].students.length : ''}</td>
-        <td><select data-k="d">${r.days.map((x, i) => `<option value="${i}" ${i === d ? 'selected' : ''}>${wdName(x.date).slice(0, 3)} ${fmtDate(x.date)}</option>`).join('')}</select></td>
+        <td><select data-k="d">${r.days.map((x, i) => `<option value="${i}" ${i === d ? 'selected' : ''}>${esc(wdShort(x.date))} ${fmtDate(x.date)}</option>`).join('')}</select></td>
         <td><select data-k="s">${r.slots.map((x, i) => `<option value="${i}" ${i === s ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></td></tr>`).join('') + '</tbody>';
   }
   $('courseFilter').addEventListener('input', () => { const cr = currentResult(); if (cr) renderCourseTable(cr, new Set(cfg().fixed.map(f => f.code))); });
@@ -645,13 +714,13 @@
     out.innerHTML = matches.map(([s, i]) => {
       const ex = Object.entries(r.assignment).filter(([c]) => e.courses[c] && e.courses[c].students.includes(i)).sort((a, b) => a[1][0] - b[1][0] || a[1][1] - b[1][1]);
       return `<div class="student-card"><b>${esc(s.id)}</b> ${esc(s.name)} <span class="muted">${esc(s.program)} ${esc(s.level)}</span>
-        <table class="tbl">${ex.map(([c, [d, sl]]) => `<tr><td>${wdName(r.days[d].date)} ${fmtDate(r.days[d].date)}</td><td>${esc(r.slots[sl])}</td><td><b>${esc(c)}</b></td><td>${esc(e.courses[c].title)}</td><td>${esc(rooms[c + '|' + i] || '')}</td></tr>`).join('')}</table></div>`;
-    }).join('') || '<p class="muted">No student found.</p>';
+        <table class="tbl">${ex.map(([c, [d, sl]]) => `<tr><td>${esc(wdName(r.days[d].date))} ${fmtDate(r.days[d].date)}</td><td dir="ltr">${esc(r.slots[sl])}</td><td><b>${esc(c)}</b></td><td>${esc(e.courses[c].title)}</td><td>${esc(rooms[c + '|' + i] || '')}</td></tr>`).join('')}</table></div>`;
+    }).join('') || `<p class="muted">${esc(t('lookup.none'))}</p>`;
   }
   $('studentSearch').addEventListener('input', renderStudent);
 
   // ---------------- export ----------------
-  // Build the export tables (same files as the old Python scripts, plus rooms)
+  // Build the export tables (same files as the old Python scripts, plus rooms). Headings follow the page language.
   function buildExports() {
     const cr = currentResult(); if (!cr) return null;
     const { r, stats } = cr, e = enr(), S = r.slots.length;
@@ -659,39 +728,41 @@
     const byTime = (a, b) => a[1][0] - b[1][0] || a[1][1] - b[1][1] || a[0].localeCompare(b[0]);
     const alloc = cfg().rooms.length ? allocateRooms(r, e) : { plan: {}, studentRoom: {} };
     const day = d => wdName(r.days[d].date), date = d => fmtDate(r.days[d].date);
+    const X = k => t('x.' + k);
     const detailed = Object.entries(r.assignment).sort(byTime).map(([c, [d, s]]) => ({
-      Day: day(d), Date: date(d), Period: s + 1, Time: r.slots[s], 'Course Code': c, 'Course Title': e.courses[c] ? e.courses[c].title : '',
-      Students: e.courses[c] ? e.courses[c].students.length : 0, Fixed: fixedSet.has(c) ? 'Yes' : '' }));
+      [X('Day')]: day(d), [X('Date')]: date(d), [X('Period')]: s + 1, [X('Time')]: r.slots[s], [X('Code')]: c, [X('Title')]: e.courses[c] ? e.courses[c].title : '',
+      [X('Students')]: e.courses[c] ? e.courses[c].students.length : 0, [X('Fixed')]: fixedSet.has(c) ? X('Yes') : '' }));
     const byday = [];
-    r.days.forEach((x, di) => r.slots.forEach((sl, s) => byday.push({ Day: day(di), Date: date(di), Period: s + 1, Time: sl,
-      Courses: Object.entries(r.assignment).filter(([, a]) => a[0] === di && a[1] === s).map(([c]) => c).sort().join(', '), Students: stats.load[di * S + s] })));
+    r.days.forEach((x, di) => r.slots.forEach((sl, s) => byday.push({ [X('Day')]: day(di), [X('Date')]: date(di), [X('Period')]: s + 1, [X('Time')]: sl,
+      [X('Courses')]: Object.entries(r.assignment).filter(([, a]) => a[0] === di && a[1] === s).map(([c]) => c).sort().join(', '), [X('Students')]: stats.load[di * S + s] })));
     const student = [];
     e.students.forEach((st, i) => {
       Object.entries(r.assignment).filter(([c]) => e.courses[c] && e.courses[c].students.includes(i)).sort(byTime)
-        .forEach(([c, [d, s]]) => student.push({ 'Student ID': st.id, Name: st.name, Program: st.program, Level: st.level, 'Course Code': c, 'Course Title': e.courses[c].title, Day: day(d), Date: date(d), Period: s + 1, Time: r.slots[s], Room: alloc.studentRoom[c + '|' + i] || '' }));
+        .forEach(([c, [d, s]]) => student.push({ [X('SID')]: st.id, [X('Name')]: st.name, [X('Program')]: st.program, [X('Level')]: st.level, [X('Code')]: c, [X('Title')]: e.courses[c].title, [X('Day')]: day(d), [X('Date')]: date(d), [X('Period')]: s + 1, [X('Time')]: r.slots[s], [X('Room')]: alloc.studentRoom[c + '|' + i] || '' }));
     });
     const rooms = [];
     r.days.forEach((x, di) => r.slots.forEach((sl, s) => (alloc.plan[di * S + s] || []).forEach(rm => rm.parts.forEach(p =>
-      rooms.push({ Day: day(di), Date: date(di), Time: sl, Room: rm.name, 'Course Code': p.code, Students: p.count, 'From ID': p.from, 'To ID': p.to })))));
+      rooms.push({ [X('Day')]: day(di), [X('Date')]: date(di), [X('Time')]: sl, [X('Room')]: rm.name, [X('Code')]: p.code, [X('Students')]: p.count, [X('From')]: p.from, [X('To')]: p.to })))));
     const minHeavy = mode === 'final' ? 2 : 3;
     const heavy = stats.heavy.filter(x => x.n >= minHeavy).sort((a, b) => b.n - a.n || a.d - b.d).map(x => {
-      const row = { 'Student ID': e.students[x.student].id, Name: e.students[x.student].name, Day: day(x.d), Date: date(x.d), Exams: x.n };
-      x.codes.forEach((c, k) => (row['Exam ' + (k + 1)] = c));
+      const row = { [X('SID')]: e.students[x.student].id, [X('Name')]: e.students[x.student].name, [X('Day')]: day(x.d), [X('Date')]: date(x.d), [X('Exams')]: x.n };
+      x.codes.forEach((c, k) => (row[t('x.ExamN', { n: k + 1 })] = c));
       return row;
     });
     const label = mode === 'final' ? 'Final' : 'Midterm';
     return { label, minHeavy, sheets: { detailed, student, byday, heavy, rooms } };
   }
-  const SHEET_NAMES = { detailed: 'Detailed Schedule', student: 'Student Exam Timetable', byday: 'Courses By Day', heavy: 'Heavy Days', rooms: 'Room Plan' };
-  const FILE_NAMES = { detailed: 'detailed_schedule', student: 'student_exam_timetable', byday: 'courses_by_day', heavy: 'students_with_heavy_days', rooms: 'room_plan' };
+  const FILE_NAMES = { detailed: 'detailed_schedule', student: 'student_exam_timetable', byday: 'courses_by_day', rooms: 'room_plan' };
   document.querySelector('.downloads').addEventListener('click', ev => {
     const kind = ev.target.dataset && ev.target.dataset.dl; if (!kind) return;
     const x = buildExports(); if (!x) return;
     const wb = XLSX.utils.book_new();
-    const add = (rows, name) => XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows.length ? rows : [{ '': 'none' }]), name);
+    if (state.lang === 'ar') wb.Workbook = { Views: [{ RTL: true }] };
+    const add = (rows, name) => XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows.length ? rows : [{ '': t('x.none') }]), name.slice(0, 31));
     const kinds = kind === 'all' ? ['byday', 'detailed', 'student', 'rooms', 'heavy'] : [kind];
-    kinds.forEach(k => add(x.sheets[k], SHEET_NAMES[k]));
-    const name = kind === 'all' ? `${x.label}_exam_schedule.xlsx` : `${x.label}_${kind === 'heavy' ? (x.minHeavy === 2 ? 'students_with_2_exams_a_day' : 'students_with_3_exams_a_day') : FILE_NAMES[kind]}.xlsx`;
+    kinds.forEach(k => add(x.sheets[k], t('sh.' + k)));
+    const base = kind === 'heavy' ? (x.minHeavy === 2 ? 'students_with_2_exams_a_day' : 'students_with_3_exams_a_day') : FILE_NAMES[kind];
+    const name = kind === 'all' ? `${x.label}_exam_schedule.xlsx` : `${x.label}_${base}.xlsx`;
     saveFile(name, XLSX.write(wb, { bookType: 'xlsx', type: 'array' }), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', $('dlMsg'));
   });
 
@@ -702,8 +773,8 @@
       let dl = null;
       try { dl = await window.claude.use('downloads'); } catch (e) { dl = null; }
       if (dl) {
-        try { await dl.save({ filename: name, data: data instanceof ArrayBuffer ? new Blob([data]) : data }); say(`Saved ${esc(name)}.`); }
-        catch (e) { if (e && e.code !== 'declined') say(`<span class="err">Could not save the file (${esc(e && e.code)}).</span>`); }
+        try { await dl.save({ filename: name, data: data instanceof ArrayBuffer ? new Blob([data]) : data }); say(esc(t('dl.saved', { f: name }))); }
+        catch (e) { if (e && e.code !== 'declined') say(`<span class="err">${esc(t('dl.err', { c: e && e.code }))}</span>`); }
         return;
       }
     }
@@ -714,9 +785,7 @@
   }
   $('printBtn').onclick = () => window.print();
   const EMBEDDED = (() => { try { return window.self !== window.top; } catch (e) { return true; } })();
-  if (EMBEDDED) {
-    $('printBtn').hidden = true;
-  }
+  if (EMBEDDED) $('printBtn').hidden = true;
 
   // ---------------- settings file ----------------
   $('exportCfg').onclick = () => {
@@ -730,31 +799,31 @@
       if (Array.isArray(j.order)) state.order = j.order;
       if (Array.isArray(j.rooms)) for (const m of ['midterm', 'final']) if (j.cfg && j.cfg[m] && !j.cfg[m].rooms) j.cfg[m].rooms = clone(j.rooms);
       for (const m of ['midterm', 'final']) if (j.cfg && j.cfg[m]) state.cfg[m] = Object.assign(clone(DEFAULTS[m]), j.cfg[m]);
-      save(); renderAll();
-    } catch (err) { $('cfgMsg').innerHTML = `<span class="err">Could not read settings file: ${esc(err.message)}</span>`; }
+      typingRows.clear(); save(); renderAll();
+    } catch (err) { $('cfgMsg').innerHTML = `<span class="err">${esc(t('cfg.loadErr', { m: err.message }))}</span>`; }
     ev.target.value = '';
   });
   $('resetCfg').onclick = () => {
     const btn = $('resetCfg');
     if (!btn.dataset.armed) {
-      btn.dataset.armed = '1'; btn.textContent = `Click again to reset ${mode}`;
-      setTimeout(() => { delete btn.dataset.armed; btn.textContent = 'Reset this tab to defaults'; }, 4000);
+      btn.dataset.armed = '1'; btn.textContent = t('cfg.resetConfirm', { tab: tabName(mode) });
+      setTimeout(() => { delete btn.dataset.armed; btn.textContent = t('cfg.reset'); }, 4000);
       return;
     }
-    delete btn.dataset.armed; btn.textContent = 'Reset this tab to defaults';
-    state.cfg[mode] = clone(DEFAULTS[mode]); delete state.results[mode]; save(); renderAll();
+    delete btn.dataset.armed; btn.textContent = t('cfg.reset');
+    state.cfg[mode] = clone(DEFAULTS[mode]); delete state.results[mode]; typingRows.clear(); save(); renderAll();
   };
 
   // ---------------- tabs ----------------
   $('tabs').addEventListener('click', ev => {
     const b = ev.target.closest('button'); if (!b) return;
     mode = state.mode = b.dataset.mode; save();
-    document.querySelectorAll('#tabs button').forEach(x => x.classList.toggle('active', x === b));
+    typingRows.clear();
     showWarnings([], []); $('runMsg').textContent = '';
     renderAll();
   });
 
-  // ---------------- section order ----------------
+  // ---------------- section order and folding ----------------
   function applyOrder() {
     const main = $('main'), secs = [...main.querySelectorAll('section.sec')];
     const keys = secs.map(x => x.dataset.sec);
@@ -765,24 +834,41 @@
       x.querySelector('.num').textContent = i + 1;
       x.querySelector('.mv-up').disabled = i === 0;
       x.querySelector('.mv-down').disabled = i === all.length - 1;
+      const folded = !!state.folded[x.dataset.sec];
+      x.classList.toggle('folded', folded);
+      x.querySelector('.fold-btn').setAttribute('aria-expanded', String(!folded));
     });
   }
-  document.querySelectorAll('section.sec > h2').forEach(h => h.insertAdjacentHTML('beforeend',
-    '<span class="mover"><button class="icon-btn mv-up" title="Move section up" aria-label="Move section up">▲</button><button class="icon-btn mv-down" title="Move section down" aria-label="Move section down">▼</button></span>'));
-  $('main').addEventListener('click', ev => {
-    const b = ev.target.closest('.mv-up, .mv-down'); if (!b) return;
-    const keys = [...$('main').querySelectorAll('section.sec')].map(x => x.dataset.sec);
-    const i = keys.indexOf(b.closest('section').dataset.sec), j = b.classList.contains('mv-up') ? i - 1 : i + 1;
-    if (j < 0 || j >= keys.length) return;
-    [keys[i], keys[j]] = [keys[j], keys[i]];
-    state.order = keys; save(); applyOrder();
-    b.closest('section').scrollIntoView({ block: 'nearest' });
+  document.querySelectorAll('section.sec > h2').forEach(h => {
+    h.insertAdjacentHTML('afterbegin', '<button class="icon-btn fold-btn" type="button">▾</button>');
+    h.insertAdjacentHTML('beforeend', '<span class="mover"><button class="icon-btn mv-up" type="button">▲</button><button class="icon-btn mv-down" type="button">▼</button></span>');
   });
+  $('main').addEventListener('click', ev => {
+    const sec = ev.target.closest('section.sec'); if (!sec) return;
+    const mv = ev.target.closest('.mv-up, .mv-down');
+    if (mv) {
+      const keys = [...$('main').querySelectorAll('section.sec')].map(x => x.dataset.sec);
+      const i = keys.indexOf(sec.dataset.sec), j = mv.classList.contains('mv-up') ? i - 1 : i + 1;
+      if (j < 0 || j >= keys.length) return;
+      [keys[i], keys[j]] = [keys[j], keys[i]];
+      state.order = keys; save(); applyOrder();
+      sec.scrollIntoView({ block: 'nearest' });
+      return;
+    }
+    // fold with the arrow or by clicking the section title
+    if (ev.target.closest('.fold-btn') || (ev.target.closest('h2') && ev.target.closest('h2').parentNode === sec)) {
+      state.folded[sec.dataset.sec] = !state.folded[sec.dataset.sec]; save(); applyOrder();
+    }
+  });
+  $('foldAll').onclick = () => { document.querySelectorAll('section.sec').forEach(x => (state.folded[x.dataset.sec] = true)); save(); applyOrder(); };
+  $('openAll').onclick = () => { state.folded = {}; save(); applyOrder(); };
   $('resetOrder').onclick = () => { state.order = []; save(); location.reload(); };
 
   function renderAll() {
     document.querySelectorAll('#tabs button').forEach(x => x.classList.toggle('active', x.dataset.mode === mode));
     applyOrder(); renderEnrInfo(); renderExtra(); renderRooms(); renderForm(); renderFixed(); renderResults();
   }
+  applyTheme();
+  applyLang();
   renderAll();
 })();
