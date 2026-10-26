@@ -7,6 +7,7 @@
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const normCode = s => String(s == null ? '' : s).toUpperCase().replace(/[\s_\-–]+/g, '');
 
+  const ADJ_FINAL = 20;
   const DEFAULTS = {
     midterm: {
       start: '2026-11-07', end: '2026-11-12', weekdays: [6, 0, 1, 2, 3, 4], holidays: [], extraDays: ['2026-11-14'],
@@ -27,9 +28,9 @@
       ]
     },
     final: {
-      start: '2027-01-02', end: '2027-01-21', weekdays: [6, 0, 1, 2, 3, 4], holidays: ['2027-01-07'], extraDays: [],
+      start: '2027-01-02', end: '2027-01-21', weekdays: [6, 0, 1, 2, 3, 4], holidays: [], extraDays: [],
       slots: ['10:00-12:00', '13:00-15:00'],
-      capacity: 0, maxPerDay: 2, adjPen: 3, pen2: 1000, pen3: 1000000, pen4: 1000000, extraPen: 20, excluded: '',
+      capacity: 0, maxPerDay: 2, adjPen: ADJ_FINAL, pen2: 1000, pen3: 1000000, pen4: 1000000, extraPen: 20, excluded: '',
       iterations: 300000, restarts: 4, balance: 0.05, fixed: []
     }
   };
@@ -46,6 +47,7 @@
     s.cfg = s.cfg || {};
     for (const m of ['midterm', 'final']) s.cfg[m] = Object.assign(clone(DEFAULTS[m]), s.cfg[m] || {});
     s.results = s.results || {};
+    s.extra = s.extra || [];
     return s;
   }
   function save() {
@@ -166,6 +168,55 @@
     renderAll();
   }
 
+  // Enrollment plus courses added by hand and fixed courses missing from the file (0 students)
+  function enr() {
+    const base = state.enr || { students: [], courses: {} };
+    const students = base.students.slice(), courses = Object.assign({}, base.courses);
+    const idx = new Map(students.map((s, i) => [s.id, i]));
+    for (const x of state.extra) {
+      const code = normCode(x.code); if (!code) continue;
+      const ids = String(x.ids || '').split(/[\s,;]+/).map(t => t.trim()).filter(Boolean);
+      const list = courses[code] ? courses[code].students.slice() : [];
+      for (const id of ids) {
+        if (!idx.has(id)) { idx.set(id, students.length); students.push({ id, name: '', program: '', level: '' }); }
+        if (!list.includes(idx.get(id))) list.push(idx.get(id));
+      }
+      courses[code] = { title: x.title || (courses[code] && courses[code].title) || '', students: list, manual: true };
+    }
+    for (const f of cfg().fixed) {
+      const code = normCode(f.code);
+      if (code && !courses[code]) courses[code] = { title: '', students: [], manual: true };
+    }
+    return { students, courses, fileName: base.fileName, loadedAt: base.loadedAt };
+  }
+
+  function renderExtra() {
+    const tb = $('extraTbl').querySelector('tbody');
+    tb.innerHTML = state.extra.map((x, i) => {
+      const n = String(x.ids || '').split(/[\s,;]+/).filter(Boolean).length;
+      const inFile = state.enr && state.enr.courses[normCode(x.code)];
+      return `<tr data-i="${i}"><td class="code"><input value="${esc(x.code)}" data-k="code" placeholder="CODE"></td>
+        <td><input value="${esc(x.title)}" data-k="title" placeholder="Course name" style="width:100%"></td>
+        <td><textarea data-k="ids" rows="1" placeholder="optional: student IDs" style="width:100%">${esc(x.ids)}</textarea>
+          <span class="muted">${n} students${inFile ? ' (added to the ' + inFile.students.length + ' in the file)' : ''}</span></td>
+        <td><button class="icon-btn" data-del="${i}" title="Remove">×</button></td></tr>`;
+    }).join('') || '<tr><td colspan="4" class="muted">None. Use this for courses that are not in the Excel file.</td></tr>';
+  }
+  $('extraTbl').addEventListener('change', ev => {
+    const tr = ev.target.closest('tr'); if (!tr || !ev.target.dataset.k) return;
+    const x = state.extra[+tr.dataset.i], k = ev.target.dataset.k;
+    x[k] = k === 'code' ? normCode(ev.target.value) : ev.target.value;
+    save(); renderExtra(); renderEnrInfo(); renderFixed();
+  });
+  $('extraTbl').addEventListener('click', ev => {
+    const d = ev.target.dataset.del; if (d == null) return;
+    state.extra.splice(+d, 1); save(); renderExtra(); renderEnrInfo(); renderFixed();
+  });
+  $('addExtra').onclick = () => {
+    state.extra.push({ code: '', title: '', ids: '' }); save(); renderExtra();
+    const ins = $('extraTbl').querySelectorAll('td.code input'); ins[ins.length - 1].focus();
+  };
+
   function renderEnrInfo() {
     const e = state.enr;
     if (!e) { $('enrInfo').textContent = 'No file loaded.'; return; }
@@ -173,7 +224,8 @@
     $('enrInfo').innerHTML = `<b>${esc(e.fileName)}</b> — ${e.students.length} students, ${n} courses <span class="muted">(loaded ${new Date(e.loadedAt).toLocaleString()})</span>`;
     let dl = document.getElementById('codeList');
     if (!dl) { dl = document.createElement('datalist'); dl.id = 'codeList'; document.body.appendChild(dl); }
-    dl.innerHTML = Object.keys(e.courses).sort().map(c => `<option value="${esc(c)}">${esc(e.courses[c].title)}</option>`).join('');
+    const all = enr().courses;
+    dl.innerHTML = Object.keys(all).sort().map(c => `<option value="${esc(c)}">${esc(all[c].title)}</option>`).join('');
   }
 
   // ---------------- settings form ----------------
@@ -203,6 +255,8 @@
   }
   function renderDays() {
     const days = examDays(cfg());
+    const xmas = days.filter(d => !d.extra && d.date.slice(5) === '01-07').map(d => d.date);
+    $('holidayTip').innerHTML = xmas.map(d => `<div class="warn">Recommended: ${wdName(d)} ${fmtDate(d)} is usually a holiday (Coptic Christmas). <button class="btn small" data-hol="${d}">Make it a holiday</button></div>`).join('');
     $('dayList').innerHTML = days.length
       ? `<span class="muted" style="background:none">${days.length} exam days:</span>` + days.map(d => `<span class="${d.extra ? 'extra' : ''}">${WD[new Date(parseISO(d.date)).getUTCDay()].slice(0, 3)} ${fmtDate(d.date)}${d.extra ? ' (extra)' : ''}</span>`).join('')
       : '<span class="err">No exam days — check the dates.</span>';
@@ -211,12 +265,16 @@
     if (el.closest('#fixedTbl') || el.closest('#results') || el.closest('#colMap') || el.type === 'file' || el.id === 'pasteFixed') return;
     el.addEventListener('change', () => { readForm(); renderDays(); renderFixed(); });
   });
+  $('holidayTip').addEventListener('click', ev => {
+    const d = ev.target.dataset.hol; if (!d) return;
+    cfg().holidays.push(d); save(); renderForm(); renderFixed();
+  });
   $('weekdays').addEventListener('change', () => { readForm(); renderDays(); renderFixed(); });
 
   // ---------------- fixed exams ----------------
   function slotLabel(i) { return cfg().slots[i] || `Slot ${i + 1}`; }
   function renderFixed() {
-    const c = cfg(), days = examDays(c), e = state.enr;
+    const c = cfg(), days = examDays(c), e = state.enr ? enr() : null;
     const tb = $('fixedTbl').querySelector('tbody');
     tb.innerHTML = c.fixed.map((f, i) => {
       const course = e && e.courses[normCode(f.code)];
@@ -224,7 +282,7 @@
       const dayOpts = (inDays ? '' : `<option value="${esc(f.date)}" selected>${f.date ? fmtDate(f.date) + ' (not an exam day!)' : '— choose —'}</option>`) +
         days.map(d => `<option value="${d.date}" ${d.date === f.date ? 'selected' : ''}>${wdName(d.date)} ${fmtDate(d.date)}</option>`).join('');
       const slotOpts = c.slots.map((s, si) => `<option value="${si}" ${si === f.slot ? 'selected' : ''}>${esc(s)}</option>`).join('');
-      const info = !f.code ? '' : course ? esc(course.title) : (e ? '<span class="muted">not in enrollment file — shown only</span>' : '');
+      const info = !f.code ? '' : course && !course.manual ? esc(course.title) : course && course.title ? esc(course.title) + ' <span class="muted">(added by hand)</span>' : (e ? '<span class="muted">not in the file — 0 students</span>' : '');
       return `<tr data-i="${i}">
         <td class="code"><input list="codeList" value="${esc(f.code)}" data-k="code" placeholder="CODE"></td>
         <td>${info}</td><td>${course ? course.students.length : ''}</td>
@@ -281,7 +339,7 @@
 
   // ---------------- build solver input ----------------
   function buildInput() {
-    const c = cfg(), e = state.enr, days = examDays(c);
+    const c = cfg(), e = state.enr || state.extra.length ? enr() : null, days = examDays(c);
     const errors = [], warnings = [];
     if (!e) errors.push('Upload the enrollment Excel file first.');
     if (!days.length) errors.push('There are no exam days. Check the first/last day and weekdays.');
@@ -297,10 +355,10 @@
       if (d < 0) { errors.push(`Fixed exam ${f.code}: ${f.date ? fmtDate(f.date) : 'no date'} is not one of the exam days.`); continue; }
       if (f.slot >= c.slots.length) { errors.push(`Fixed exam ${f.code}: time slot no longer exists.`); continue; }
       if (fixed[f.code]) warnings.push(`${f.code} is listed twice in fixed exams; the last one is used.`);
-      if (e.courses[f.code] && !excluded.has(f.code)) fixed[f.code] = [d, f.slot];
-      else external.push({ code: f.code, d, s: f.slot });
+      if (!excluded.has(f.code)) fixed[f.code] = [d, f.slot];
     }
-    if (external.length) warnings.push(`Not in the enrollment file (shown on the grid but no students): ${external.map(x => x.code).join(', ')}`);
+    const zero = codes.filter(k => !e.courses[k].students.length);
+    if (zero.length) warnings.push(`Courses with 0 students (scheduled, but nobody is affected): ${zero.join(', ')}`);
     const totalSlots = days.length * c.slots.length;
     if (courses.length > totalSlots * 20) warnings.push('Very few slots for the number of courses.');
     const dayPen = [0, 0, c.pen2, c.pen3, c.pen4];
@@ -320,7 +378,8 @@
     showWarnings(b.errors, b.warnings);
     if (b.errors.length) return;
     if (worker) worker.terminate();
-    worker = new Worker('solver.js');
+    try { worker = new Worker('solver.js'); }
+    catch (err) { worker = mainThreadWorker(); }
     $('run').disabled = true; $('progress').classList.remove('hidden');
     $('runMsg').textContent = 'Working…';
     const t0 = Date.now();
@@ -339,8 +398,24 @@
         $('results').scrollIntoView({ behavior: 'smooth' });
       } else if (m.type === 'error') { finishRun(); $('runMsg').innerHTML = `<span class="err">${esc(m.message)}</span>`; }
     };
+    worker.onerror = () => { const h = worker.onmessage; worker = mainThreadWorker(); worker.onmessage = h; worker.postMessage(b.input); };
     worker.postMessage(b.input);
   };
+  // Fallback when Web Workers are not allowed: run the solver on the page (it freezes briefly)
+  function mainThreadWorker() {
+    const w = { onmessage: null, terminate() {} };
+    w.postMessage = data => setTimeout(() => {
+      try {
+        const n = Math.max(1, data.config.restarts || 1); let best = null;
+        for (let r = 0; r < n; r++) {
+          const res = Solver.solve(Object.assign({}, data, { config: Object.assign({}, data.config, { seed: 12345 + r * 7919 }) }));
+          if (!best || res.cost < best.cost) best = res;
+        }
+        w.onmessage({ data: { type: 'done', result: best } });
+      } catch (err) { w.onmessage({ data: { type: 'error', message: String(err) } }); }
+    }, 50);
+    return w;
+  }
   function finishRun() { $('run').disabled = false; $('progress').classList.add('hidden'); $('progress').firstElementChild.style.width = '0'; }
   function showWarnings(errs, warns) {
     $('warnings').innerHTML = errs.map(x => `<div class="err">${esc(x)}</div>`).join('') + warns.map(x => `<div class="warn">${esc(x)}</div>`).join('');
@@ -349,9 +424,9 @@
   // ---------------- results ----------------
   function currentResult() {
     const r = state.results[mode];
-    if (!r || !state.enr) return null;
+    if (!r || !(state.enr || state.extra.length)) return null;
     // stats are recomputed against the saved days/slots of this result
-    const e = state.enr;
+    const e = enr();
     const courses = Object.keys(r.assignment).filter(c => e.courses[c]).map(code => ({ code, students: e.courses[code].students }));
     const input = { courses, nStudents: e.students.length, days: r.days, nSlots: r.slots.length, config: { capacity: cfg().capacity } };
     return { r, input, stats: Solver.evaluate(input, r.assignment) };
@@ -361,7 +436,7 @@
     const cr = currentResult();
     if (!cr) { $('results').classList.add('hidden'); return; }
     $('results').classList.remove('hidden');
-    const { r, input, stats } = cr, e = state.enr, S = r.slots.length;
+    const { r, input, stats } = cr, e = enr(), S = r.slots.length;
     const fixedSet = new Set(cfg().fixed.map(f => f.code));
     $('genAt').textContent = 'Generated ' + new Date(r.generatedAt).toLocaleString() + (r.edited ? ' · edited by hand' : '');
 
@@ -416,7 +491,7 @@
   }
 
   function renderCourseTable(cr, fixedSet) {
-    const { r } = cr, e = state.enr, q = $('courseFilter').value.trim().toUpperCase();
+    const { r } = cr, e = enr(), q = $('courseFilter').value.trim().toUpperCase();
     const rows = Object.entries(r.assignment)
       .filter(([code]) => !q || code.includes(q) || (e.courses[code] && e.courses[code].title.toUpperCase().includes(q)))
       .sort((a, b) => a[1][0] - b[1][0] || a[1][1] - b[1][1] || a[0].localeCompare(b[0]));
@@ -450,7 +525,7 @@
   function renderStudent() {
     const q = $('studentSearch').value.trim().toLowerCase(), cr = currentResult(), out = $('studentOut');
     if (!q || !cr) { out.innerHTML = ''; return; }
-    const e = state.enr, r = cr.r;
+    const e = enr(), r = cr.r;
     const matches = e.students.map((s, i) => [s, i]).filter(([s]) => s.id.toLowerCase().includes(q) || s.name.toLowerCase().includes(q)).slice(0, 10);
     out.innerHTML = matches.map(([s, i]) => {
       const ex = Object.entries(r.assignment).filter(([c]) => e.courses[c] && e.courses[c].students.includes(i)).sort((a, b) => a[1][0] - b[1][0] || a[1][1] - b[1][1]);
@@ -463,7 +538,7 @@
   // ---------------- export ----------------
   $('exportXlsx').onclick = () => {
     const cr = currentResult(); if (!cr) return;
-    const { r, stats } = cr, e = state.enr, S = r.slots.length;
+    const { r, stats } = cr, e = enr(), S = r.slots.length;
     const fixedSet = new Set(cfg().fixed.map(f => f.code));
     const label = mode === 'final' ? 'Final' : 'Midterm';
     const sched = Object.entries(r.assignment).sort((a, b) => a[1][0] - b[1][0] || a[1][1] - b[1][1] || a[0].localeCompare(b[0]))
@@ -519,7 +594,7 @@
 
   function renderAll() {
     document.querySelectorAll('#tabs button').forEach(x => x.classList.toggle('active', x.dataset.mode === mode));
-    renderEnrInfo(); renderForm(); renderFixed(); renderResults();
+    renderEnrInfo(); renderExtra(); renderForm(); renderFixed(); renderResults();
   }
   renderAll();
 })();

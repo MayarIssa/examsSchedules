@@ -36,6 +36,17 @@
     <div id="colMap" class="row wrap hidden"></div>
   </section>
 
+  <!-- Courses not in the file -->
+  <section class="card">
+    <h2><span class="num">+</span> Courses not in the file <small>مواد مش موجودة في الملف</small></h2>
+    <p class="hint">Add any course that is missing from the Excel file. Student IDs are optional; without them the course has 0 students and only takes a place in the timetable. Shared by midterm and final.</p>
+    <div class="scroll"><table class="tbl" id="extraTbl">
+      <thead><tr><th>Course code</th><th>Course name</th><th>Student IDs</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+    <button id="addExtra" class="btn">+ Add course</button>
+  </section>
+
   <!-- 2. Exam period -->
   <section class="card">
     <h2><span class="num">2</span> Exam period &amp; times <small>الأيام والمواعيد</small></h2>
@@ -48,7 +59,7 @@
       <div id="weekdays" class="row wrap"></div>
     </div>
     <div class="grid2">
-      <label>Days off (holidays) <span class="muted">one date per line</span><textarea id="holidays" rows="2" placeholder="2027-01-07"></textarea></label>
+      <label>Days off (holidays) <span class="muted">one date per line</span><textarea id="holidays" rows="2" placeholder="2027-01-07"></textarea><span id="holidayTip"></span></label>
       <label>Extra days, used only if they help <span class="muted">one date per line</span><textarea id="extraDays" rows="2" placeholder="2026-11-14"></textarea></label>
     </div>
     <label class="field">Exam times (one per line, HH:MM-HH:MM)<textarea id="slots" rows="4"></textarea></label>
