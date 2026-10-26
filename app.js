@@ -1103,9 +1103,58 @@
       per[x.uid] = { duties: s0.duties, target: s0.target, lost: s0.lost,
         offReq: [...s0.blockedDay.entries()], offAuto: [...s0.autoOff], slotBlocks: [...s0.blockedSlot.entries()] };
     }
-    return { result: { generatedAt: new Date().toISOString(), seed, days: r.days, slots: r.slots, assign, shortages, per, total, sig: taSignature() } };
+    const result = { generatedAt: new Date().toISOString(), seed, days: r.days, slots: r.slots, assign, shortages, per, total, sig: taSignature() };
+    equalizeTA(result, rand);
+    return { result };
   }
   function cmpKey(a, b) { for (let i = 0; i < a.length; i++) { if (a[i] < b[i]) return -1; if (a[i] > b[i]) return 1; } return 0; }
+
+  // Everyone ends with the same number of exam times: TAs below the highest count get reserve (standby)
+  // duties at exam times when they are free. A TA with their own number gets exactly that number.
+  const RESERVE = '__reserve__';
+  const postLabel = p => (p === RESERVE ? t('ta.reserve') : p);
+  function equalizeTA(res, rand) {
+    rand = rand || Math.random;
+    const S = res.slots.length, c = taCfg(), spread = (c.spread || 'spread') === 'spread';
+    res.assign = res.assign.filter(a => !a.reserve);
+    const count = uid => res.assign.filter(a => a.uid === uid).length;
+    const tas = taList().filter(x => res.per[x.uid]);
+    tas.forEach(x => (res.per[x.uid].duties = count(x.uid)));
+    const balanced = tas.filter(x => x.duties == null);
+    const top = balanced.length ? Math.max(...balanced.map(x => res.per[x.uid].duties)) : 0;
+    // exam times that have exams, with how busy they are
+    const places = {};
+    res.assign.forEach(a => (places[a.g] = (places[a.g] || 0) + 1));
+    res.shortages.forEach(z => (places[z.g] = (places[z.g] || 0) + z.n));
+    const times = Object.keys(places).map(Number);
+    const reservesAt = {};
+    res.unequal = [];
+    const order = tas.slice().sort((a, b) => res.per[a.uid].duties - res.per[b.uid].duties || rand() - 0.5);
+    for (const x of order) {
+      const p = res.per[x.uid];
+      const want = x.duties != null ? x.duties : top;
+      let need = want - p.duties;
+      const req = new Map(p.offReq), slotB = new Map(p.slotBlocks), off = new Set(p.offAuto);
+      while (need > 0) {
+        const mine = new Set(res.assign.filter(a => a.uid === x.uid).map(a => a.g));
+        let best = null, bestKey = null;
+        for (const g of times) {
+          const d = Math.floor(g / S);
+          if (mine.has(g) || slotB.has(g) || req.has(d) || off.has(d)) continue;
+          const today = res.assign.filter(a => a.uid === x.uid && a.d === d).length;
+          const key = [spread ? today : -today, reservesAt[g] || 0, -places[g], rand()];
+          if (!bestKey || cmpKey(key, bestKey) < 0) { bestKey = key; best = g; }
+        }
+        if (best == null) break;
+        res.assign.push({ g: best, d: Math.floor(best / S), s: best % S, post: RESERVE, courses: [], uid: x.uid, reserve: true });
+        reservesAt[best] = (reservesAt[best] || 0) + 1;
+        need--;
+      }
+      p.duties = count(x.uid);
+      if (p.duties < want) res.unequal.push({ uid: x.uid, have: p.duties, want });
+    }
+    res.reserves = res.assign.filter(a => a.reserve).length;
+  }
 
   function runTA(newSeed) {
     if (newSeed) state.ta.seed = (state.ta.seed || 1) + 1;
@@ -1128,7 +1177,7 @@
     res.days.forEach((d, di) => res.slots.forEach((sl, s) => cols.push({ d: di, s, g: di * S + s, date: d.date, slot: sl })));
     const weeks = [...new Set(res.days.map(d => weekOf(d.date)))];
     const at = {};
-    res.assign.forEach(a => (at[a.uid + '|' + a.g] = a.post));
+    res.assign.forEach(a => (at[a.uid + '|' + a.g] = postLabel(a.post)));
     const rows = taList().filter(x => res.per[x.uid]).map(x => {
       const p = res.per[x.uid];
       const offDay = new Map(p.offReq.concat(p.offAuto.map(d => [d, 'off'])));
@@ -1194,6 +1243,7 @@
     const shortBy = {};
     res.shortages.forEach(z => (shortBy[z.g] = shortBy[z.g] || { d: z.d, s: z.s, n: 0, posts: [] }, shortBy[z.g].n += z.n, shortBy[z.g].posts.push(z.post)));
     Object.entries(shortBy).forEach(([g, z]) => warn.push(`<div class="err row wrap" style="margin-top:8px">${esc(t('ta.shortage', { time: timeLabel(z.d, z.s), room: z.posts.join(', '), n: z.n }))} <button class="btn small" data-fixg="${g}">${esc(t('ta.fix'))}</button></div>`));
+    (res.unequal || []).forEach(u => warn.push(`<div class="warn">${esc(t('ta.unequal', { name: taName(u.uid), have: u.have, want: u.want }))}</div>`));
     const lost = Object.values(res.per).filter(p => p.lost).length;
     if (lost) warn.push(`<div class="warn">${esc(t('ta.lostOff', { n: lost }))}</div>`);
     if (res.edited) warn.push(`<div class="muted">${esc(t('ta.editedNote'))}</div>`);
@@ -1202,8 +1252,9 @@
     const missing = res.shortages.reduce((a, z) => a + z.n, 0);
     const counts = Object.values(res.per).map(p => p.duties);
     $('taSummary').innerHTML = [
-      [res.total, t('ta.sNeeded'), ''], [res.assign.length, t('ta.sFilled'), 'good'], [missing, t('ta.sMissing'), missing ? 'bad' : 'good'],
-      [counts.length, t('ta.sTAs'), ''], [counts.length ? Math.min(...counts) + '–' + Math.max(...counts) : '—', t('ta.sRange'), '']
+      [res.total, t('ta.sNeeded'), ''], [res.assign.filter(a => !a.reserve).length, t('ta.sFilled'), 'good'], [missing, t('ta.sMissing'), missing ? 'bad' : 'good'],
+      [counts.length, t('ta.sTAs'), ''], [counts.length ? (Math.min(...counts) === Math.max(...counts) ? String(counts[0]) : Math.min(...counts) + '–' + Math.max(...counts)) : '—', t('ta.sRange'), counts.length && Math.min(...counts) === Math.max(...counts) ? 'good' : 'mid'],
+      [res.reserves || 0, t('ta.sReserve'), '']
     ].map(([v, l, k]) => `<div class="stat ${k}"><b>${esc(v)}</b><span>${esc(l)}</span></div>`).join('');
     // timetable
     const mx = taMatrix(res), q = $('taFilter').value.trim().toLowerCase();
@@ -1212,7 +1263,7 @@
       mx.weeks.map((w, i) => `<th rowspan="2">${esc(t('ta.week', { n: i + 1 }))}</th>`).join('') + `<th rowspan="2">${esc(t('ta.total'))}</th></tr>`;
     const head2 = '<tr>' + res.days.map(() => res.slots.map(sl => `<th class="mx-slot" dir="ltr">${esc(sl)}</th>`).join('')).join('') + '</tr>';
     const body = mx.rows.filter(x => !q || x.ta.name.toLowerCase().includes(q)).map((x, i) => `<tr data-uid="${esc(x.ta.uid)}"><td>${i + 1}</td><td class="mx-name">${esc(x.ta.name)}</td>` +
-      x.cells.map((v, k) => `<td data-g="${mx.cols[k].g}" class="mx-cell ${v === t('ta.cellOff') ? 'mx-off' : v === t('ta.cellExam') ? 'mx-exam' : v ? 'mx-on' : ''}">${esc(v)}</td>`).join('') +
+      x.cells.map((v, k) => `<td data-g="${mx.cols[k].g}" class="mx-cell ${v === t('ta.cellOff') ? 'mx-off' : v === t('ta.cellExam') ? 'mx-exam' : v === t('ta.reserve') ? 'mx-res' : v ? 'mx-on' : ''}">${esc(v)}</td>`).join('') +
       x.perWeek.map(n => `<td class="mx-sum">${n}</td>`).join('') + `<td class="mx-sum"><b>${x.total}</b></td></tr>`).join('');
     $('taMatrix').innerHTML = `<thead>${head1}${head2}</thead><tbody>${body}</tbody>`;
     // by exam time
@@ -1223,7 +1274,8 @@
       const short = res.shortages.map((z, i) => [z, i]).filter(([z]) => z.g === g && z.n > 0);
       if (!seats.length && !short.length) return;
       html += `<div class="room-cell" data-g="${g}"><div class="room-head"><b>${esc(wdName(d.date))} ${fmtDate(d.date)}</b> · <span dir="ltr">${esc(sl)}</span></div><div class="room-list">` +
-        seats.map(([a, i]) => `<button type="button" class="room seat" data-ai="${i}"><b>${esc(a.post)}</b> ${esc(taName(a.uid))}</button>`).join('') +
+        seats.filter(([a]) => !a.reserve).map(([a, i]) => `<button type="button" class="room seat" data-ai="${i}"><b>${esc(a.post)}</b> ${esc(taName(a.uid))}</button>`).join('') +
+        (seats.some(([a]) => a.reserve) ? `<span class="room reserve"><b>${esc(t('ta.reserve'))}</b> ${seats.filter(([a]) => a.reserve).map(([a]) => esc(taName(a.uid))).join('، ')}</span>` : '') +
         short.map(([z, i]) => `<button type="button" class="room seat bad-room" data-si="${i}"><b>${esc(z.post)}</b> ${esc(t('ta.missing'))} ×${z.n}</button>`).join('') + '</div></div>';
     }));
     $('taPlan').innerHTML = html;
@@ -1237,7 +1289,7 @@
   // who could cover place at time g, best first
   function taCandidates(res, g, currentUid, emptySeat) {
     const S = res.slots.length, d = Math.floor(g / S);
-    const busy = new Map(res.assign.filter(a => a.g === g).map(a => [a.uid, a.post]));
+    const busy = new Map(res.assign.filter(a => a.g === g && !a.reserve).map(a => [a.uid, a.post]));
     const out = [];
     for (const x of taList()) {
       if (x.uid === currentUid) continue;
@@ -1306,7 +1358,8 @@
     if (newUid === '__empty__') { res.assign.splice(seat.ai, 1); addShort(); }
     else {
       // if the new person is busy elsewhere at this time, swap them
-      const other = res.assign.find(x => x.g === g && x.uid === newUid);
+      res.assign = res.assign.filter(x => !(x.reserve && x.g === g && x.uid === newUid));
+      const other = res.assign.find(x => x.g === g && x.uid === newUid && !x.reserve);
       if (other) {
         if (oldUid) other.uid = oldUid;
         else { res.assign.splice(res.assign.indexOf(other), 1); res.shortages.push({ g, d, s: g % S, post: other.post, n: 1 }); }
@@ -1319,7 +1372,7 @@
     res.shortages = res.shortages.filter(x => x.n > 0);
     // merge shortages for the same place
     const m = {}; res.shortages.forEach(x => { const k = x.g + '|' + x.post; if (m[k]) m[k].n += x.n; else m[k] = x; }); res.shortages = Object.values(m);
-    for (const uid in res.per) res.per[uid].duties = res.assign.filter(x => x.uid === uid).length;
+    equalizeTA(res);
     res.edited = true; save();
     closeTAEditor(); renderTAResult();
   }
@@ -1339,7 +1392,7 @@
   $('taMatrix').addEventListener('click', ev => {
     const td = ev.target.closest('td.mx-cell'); if (!td) return;
     const res = state.ta.result[mode], g = +td.dataset.g, uid = td.parentNode.dataset.uid;
-    const ai = res.assign.findIndex(a => a.g === g && a.uid === uid);
+    const ai = res.assign.findIndex(a => a.g === g && a.uid === uid && !a.reserve);
     if (ai >= 0) return openTAEditor({ ai }, $('taMatrix').parentNode);
     // empty cell: offer this TA for a missing place at that time
     const si = res.shortages.findIndex(z => z.g === g && z.n > 0);
@@ -1367,7 +1420,7 @@
       return ws;
     };
     const byRoom = res.assign.slice().sort((a, b) => a.g - b.g || String(a.post).localeCompare(String(b.post))).map(a => ({
-      [X('Day')]: wdName(res.days[a.d].date), [X('Date')]: fmtDate(res.days[a.d].date), [X('Time')]: res.slots[a.s], [X('Post')]: a.post,
+      [X('Day')]: wdName(res.days[a.d].date), [X('Date')]: fmtDate(res.days[a.d].date), [X('Time')]: res.slots[a.s], [X('Post')]: postLabel(a.post),
       [X('Courses')]: a.courses.join(', '), [X('TA')]: taName(a.uid) }))
       .concat(res.shortages.map(z => ({ [X('Day')]: wdName(res.days[z.d].date), [X('Date')]: fmtDate(res.days[z.d].date), [X('Time')]: res.slots[z.s], [X('Post')]: z.post, [X('Courses')]: '', [X('TA')]: t('ta.missing') + ' ×' + z.n })));
     const offRows = [];

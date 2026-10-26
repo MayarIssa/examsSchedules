@@ -321,3 +321,19 @@ Object.assign(window.I18N.ar, {
   'ta.noFree': 'لا يوجد معيد متاح في هذا الموعد. يمكنك: كتابة اسم شخص آخر، أو تجاوز طلب إجازة بالأسفل، أو تقليل عدد المعيدين لهذه القاعة في القواعد، أو إضافة معيدين.',
   'ta.other': '✎ شخص آخر (اكتب الاسم)…', 'ta.otherPh': 'الاسم', 'ta.empty': 'اترك هذا المكان فارغاً', 'ta.apply': 'تطبيق', 'ta.close': 'إغلاق'
 });
+
+/* TA tab: equal duties with reserves */
+Object.assign(window.I18N.en, {
+  'ta.reserve': 'Reserve', 'ta.sReserve': 'reserve duties added so everyone is equal',
+  'ta.unequal': '{name} could only get {have} of {want} exam times because of their days off.',
+  'ta.dutiesD': 'Leave empty to share the work equally (about {n} each now). Everyone always ends with the same number: if someone has more, the others get reserve (احتياطي) duties.',
+  'ta.matrixHint': 'Room or post for each TA at each exam time. أجازه = day off, امتحان = own exam, Reserve = standby duty that keeps everyone equal.',
+  'ta.sRange': 'exam times per TA'
+});
+Object.assign(window.I18N.ar, {
+  'ta.reserve': 'احتياطي', 'ta.sReserve': 'مراقبة احتياطي أُضيفت ليتساوى الجميع',
+  'ta.unequal': '{name} حصل على {have} فقط من {want} مراقبات بسبب أيام إجازته.',
+  'ta.dutiesD': 'اتركه فارغاً لتوزيع العمل بالتساوي (حوالي {n} لكل معيد حالياً). الجميع ينتهي دائماً بنفس العدد: إذا زاد أحدهم، يحصل الباقون على مراقبات احتياطي.',
+  'ta.matrixHint': 'القاعة أو المكان لكل معيد في كل موعد. أجازه = يوم إجازة، امتحان = امتحان المعيد، احتياطي = مراقبة احتياطية ليتساوى الجميع.',
+  'ta.sRange': 'مرات المراقبة لكل معيد'
+});
