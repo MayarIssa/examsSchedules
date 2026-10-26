@@ -48,8 +48,14 @@
     for (const m of ['midterm', 'final']) s.cfg[m] = Object.assign(clone(DEFAULTS[m]), s.cfg[m] || {});
     s.results = s.results || {};
     s.extra = s.extra || [];
+    if (!Array.isArray(s.rooms)) s.rooms = defaultRooms(30, 25);
     return s;
   }
+  function defaultRooms(n, seats) { return Array.from({ length: n }, (_, i) => ({ name: 'Room ' + (i + 1), seats })); }
+  const roomSeats = () => state.rooms.reduce((t, r) => t + (Math.max(0, +r.seats) || 0), 0);
+  // seats per time slot = all rooms together (no rooms = no limit)
+  const seatLimit = () => (state.rooms.length ? roomSeats() : 0);
+
   function save() {
     try { localStorage.setItem(STORE, JSON.stringify(state)); }
     catch (e) {
@@ -217,6 +223,91 @@
     const ins = $('extraTbl').querySelectorAll('td.code input'); ins[ins.length - 1].focus();
   };
 
+  // ---------------- rooms board ----------------
+  function renderRooms() {
+    const n = state.rooms.length, total = roomSeats();
+    $('roomTotal').innerHTML = n ? `<b>${n}</b> rooms · <b>${total}</b> seats per exam time` : '<span class="warn">No rooms: seats are not limited.</span>';
+    $('seatInfo').textContent = n ? `${total} seats (from the exam rooms board)` : 'no limit (no rooms added)';
+    $('roomTbl').querySelector('tbody').innerHTML = state.rooms.map((r, i) => `<tr data-i="${i}">
+      <td><input value="${esc(r.name)}" data-k="name" aria-label="Room name"></td>
+      <td><input type="number" min="0" value="${esc(r.seats)}" data-k="seats" class="seats" aria-label="Seats"></td>
+      <td><button class="icon-btn" data-del="${i}" title="Remove room">×</button></td></tr>`).join('') ||
+      '<tr><td colspan="3" class="muted">No rooms yet.</td></tr>';
+  }
+  $('roomTbl').addEventListener('change', ev => {
+    const tr = ev.target.closest('tr'); if (!tr || !ev.target.dataset.k) return;
+    const r = state.rooms[+tr.dataset.i];
+    if (ev.target.dataset.k === 'seats') r.seats = Math.max(0, parseInt(ev.target.value, 10) || 0);
+    else r.name = ev.target.value.trim() || r.name;
+    save(); renderRooms(); renderResults();
+  });
+  $('roomTbl').addEventListener('click', ev => {
+    const d = ev.target.dataset.del; if (d == null) return;
+    state.rooms.splice(+d, 1); save(); renderRooms(); renderResults();
+  });
+  $('addRoom').onclick = () => {
+    const seats = parseInt($('roomSeats').value, 10) || 25;
+    state.rooms.push({ name: 'Room ' + (state.rooms.length + 1), seats }); save(); renderRooms(); renderResults();
+  };
+  $('makeRooms').onclick = () => {
+    const btn = $('makeRooms');
+    if (state.rooms.length && !btn.dataset.armed) {
+      btn.dataset.armed = '1'; btn.textContent = 'Click again to replace all rooms';
+      setTimeout(() => { delete btn.dataset.armed; btn.textContent = 'Set rooms'; }, 4000);
+      return;
+    }
+    delete btn.dataset.armed; btn.textContent = 'Set rooms';
+    const n = Math.max(0, Math.min(500, parseInt($('roomCount').value, 10) || 0));
+    state.rooms = defaultRooms(n, Math.max(1, parseInt($('roomSeats').value, 10) || 25));
+    save(); renderRooms(); renderResults();
+  };
+  $('allSeats').onclick = () => {
+    const seats = Math.max(1, parseInt($('roomSeats').value, 10) || 25);
+    state.rooms.forEach(r => (r.seats = seats)); save(); renderRooms(); renderResults();
+  };
+
+  // Fill rooms in order for each exam time: biggest course first, each room up to its seats.
+  // Students of a course are split across rooms in ID order. A room can hold more than one course.
+  function allocateRooms(r, e) {
+    const S = r.slots.length, plan = {}, studentRoom = {}, overflow = {};
+    const byCell = {};
+    for (const [code, [d, s]] of Object.entries(r.assignment)) (byCell[d * S + s] = byCell[d * S + s] || []).push(code);
+    for (const g in byCell) {
+      const codes = byCell[g].filter(c => e.courses[c] && e.courses[c].students.length)
+        .sort((a, b) => e.courses[b].students.length - e.courses[a].students.length);
+      const rooms = state.rooms.map(x => ({ name: x.name, left: Math.max(0, +x.seats || 0), parts: [] }));
+      let ri = 0;
+      for (const code of codes) {
+        const sts = e.courses[code].students.slice().sort((a, b) => (e.students[a].id < e.students[b].id ? -1 : 1));
+        let k = 0;
+        while (k < sts.length) {
+          while (ri < rooms.length && rooms[ri].left <= 0) ri++;
+          if (ri >= rooms.length) { overflow[g] = (overflow[g] || 0) + (sts.length - k); for (; k < sts.length; k++) studentRoom[code + '|' + sts[k]] = 'NO ROOM'; break; }
+          const take = Math.min(rooms[ri].left, sts.length - k);
+          const part = { code, count: take, from: e.students[sts[k]].id, to: e.students[sts[k + take - 1]].id };
+          for (let j = 0; j < take; j++) studentRoom[code + '|' + sts[k + j]] = rooms[ri].name;
+          rooms[ri].parts.push(part); rooms[ri].left -= take; k += take;
+        }
+      }
+      plan[g] = rooms.filter(x => x.parts.length);
+    }
+    return { plan, studentRoom, overflow };
+  }
+
+  function renderRoomPlan(cr) {
+    const { r } = cr, e = enr(), S = r.slots.length;
+    if (!state.rooms.length) { $('roomPlan').innerHTML = '<p class="muted">Add rooms in the exam rooms board to get a room plan.</p>'; return; }
+    const { plan, overflow } = allocateRooms(r, e);
+    let html = '';
+    r.days.forEach((d, di) => r.slots.forEach((sl, s) => {
+      const g = di * S + s, rooms = plan[g]; if (!rooms) return;
+      html += `<div class="room-cell"><div class="room-head"><b>${wdName(d.date)} ${fmtDate(d.date)}</b> · ${esc(sl)} · ${rooms.length} rooms` +
+        (overflow[g] ? ` <span class="badge b4">${overflow[g]} students without a room</span>` : '') + '</div><div class="room-list">' +
+        rooms.map(x => `<span class="room"><b>${esc(x.name)}</b> ${x.parts.map(p => `${esc(p.code)} <small>(${p.count})</small>`).join(' + ')}</span>`).join('') + '</div></div>';
+    }));
+    $('roomPlan').innerHTML = html;
+  }
+
   function renderEnrInfo() {
     const e = state.enr;
     if (!e) { $('enrInfo').textContent = 'No file loaded.'; return; }
@@ -229,7 +320,7 @@
   }
 
   // ---------------- settings form ----------------
-  const NUM_FIELDS = ['capacity', 'maxPerDay', 'adjPen', 'pen2', 'pen3', 'pen4', 'extraPen', 'iterations', 'restarts', 'balance'];
+  const NUM_FIELDS = ['maxPerDay', 'adjPen', 'pen2', 'pen3', 'pen4', 'extraPen', 'iterations', 'restarts', 'balance'];
   function renderForm() {
     const c = cfg();
     $('start').value = c.start; $('end').value = c.end;
@@ -366,7 +457,7 @@
       errors, warnings, external,
       input: {
         courses, nStudents: e.students.length, days, nSlots: c.slots.length, fixed,
-        config: { capacity: c.capacity, dayPen, maxPerDay: Math.max(1, c.maxPerDay), adjPen: c.adjPen, extraPen: c.extraPen, balance: c.balance, iterations: c.iterations, restarts: Math.max(1, Math.min(10, c.restarts | 0)) }
+        config: { capacity: seatLimit(), dayPen, maxPerDay: Math.max(1, c.maxPerDay), adjPen: c.adjPen, extraPen: c.extraPen, balance: c.balance, iterations: c.iterations, restarts: Math.max(1, Math.min(10, c.restarts | 0)) }
       }
     };
   }
@@ -428,7 +519,7 @@
     // stats are recomputed against the saved days/slots of this result
     const e = enr();
     const courses = Object.keys(r.assignment).filter(c => e.courses[c]).map(code => ({ code, students: e.courses[code].students }));
-    const input = { courses, nStudents: e.students.length, days: r.days, nSlots: r.slots.length, config: { capacity: cfg().capacity } };
+    const input = { courses, nStudents: e.students.length, days: r.days, nSlots: r.slots.length, config: { capacity: seatLimit() } };
     return { r, input, stats: Solver.evaluate(input, r.assignment) };
   }
 
@@ -462,7 +553,7 @@
     const cellCourses = {};
     for (const [code, [d, s]] of Object.entries(r.assignment)) (cellCourses[d * S + s] = cellCourses[d * S + s] || []).push({ code, n: e.courses[code] ? e.courses[code].students.length : 0, fixed: fixedSet.has(code) });
     for (const x of r.external || []) (cellCourses[x.d * S + x.s] = cellCourses[x.d * S + x.s] || []).push({ code: x.code, n: 0, ext: true });
-    const cap = cfg().capacity;
+    const cap = seatLimit();
     let html = `<tr><th></th>${r.slots.map(s => `<th>${esc(s)}</th>`).join('')}</tr>`;
     r.days.forEach((d, di) => {
       html += `<tr><th class="day">${wdName(d.date)}<small>${fmtDate(d.date)}${d.extra ? ' · extra' : ''}</small></th>`;
@@ -477,6 +568,7 @@
     $('gridTbl').innerHTML = html;
 
     renderCourseTable(cr, fixedSet);
+    renderRoomPlan(cr);
 
     // heavy days
     const minHeavy = isFinal ? 2 : 3;
@@ -526,11 +618,12 @@
     const q = $('studentSearch').value.trim().toLowerCase(), cr = currentResult(), out = $('studentOut');
     if (!q || !cr) { out.innerHTML = ''; return; }
     const e = enr(), r = cr.r;
+    const rooms = state.rooms.length ? allocateRooms(r, e).studentRoom : {};
     const matches = e.students.map((s, i) => [s, i]).filter(([s]) => s.id.toLowerCase().includes(q) || s.name.toLowerCase().includes(q)).slice(0, 10);
     out.innerHTML = matches.map(([s, i]) => {
       const ex = Object.entries(r.assignment).filter(([c]) => e.courses[c] && e.courses[c].students.includes(i)).sort((a, b) => a[1][0] - b[1][0] || a[1][1] - b[1][1]);
       return `<div class="student-card"><b>${esc(s.id)}</b> ${esc(s.name)} <span class="muted">${esc(s.program)} ${esc(s.level)}</span>
-        <table class="tbl">${ex.map(([c, [d, sl]]) => `<tr><td>${wdName(r.days[d].date)} ${fmtDate(r.days[d].date)}</td><td>${esc(r.slots[sl])}</td><td><b>${esc(c)}</b></td><td>${esc(e.courses[c].title)}</td></tr>`).join('')}</table></div>`;
+        <table class="tbl">${ex.map(([c, [d, sl]]) => `<tr><td>${wdName(r.days[d].date)} ${fmtDate(r.days[d].date)}</td><td>${esc(r.slots[sl])}</td><td><b>${esc(c)}</b></td><td>${esc(e.courses[c].title)}</td><td>${esc(rooms[c + '|' + i] || '')}</td></tr>`).join('')}</table></div>`;
     }).join('') || '<p class="muted">No student found.</p>';
   }
   $('studentSearch').addEventListener('input', renderStudent);
@@ -549,17 +642,21 @@
       r.slots.forEach((sl, s) => { row[sl] = Object.entries(r.assignment).filter(([, a]) => a[0] === di && a[1] === s).map(([c]) => c).join(', '); });
       return row;
     });
+    const alloc = state.rooms.length ? allocateRooms(r, e) : { plan: {}, studentRoom: {} };
     const stud = [];
     e.students.forEach((st, i) => {
       Object.entries(r.assignment).filter(([c]) => e.courses[c] && e.courses[c].students.includes(i)).sort((a, b) => a[1][0] - b[1][0] || a[1][1] - b[1][1])
-        .forEach(([c, [d, s]]) => stud.push({ 'Student ID': st.id, Name: st.name, Program: st.program, Level: st.level, 'Course Code': c, 'Course Title': e.courses[c].title, Day: wdName(r.days[d].date), Date: fmtDate(r.days[d].date), Time: r.slots[s] }));
+        .forEach(([c, [d, s]]) => stud.push({ 'Student ID': st.id, Name: st.name, Program: st.program, Level: st.level, 'Course Code': c, 'Course Title': e.courses[c].title, Day: wdName(r.days[d].date), Date: fmtDate(r.days[d].date), Time: r.slots[s], Room: alloc.studentRoom[c + '|' + i] || '' }));
     });
+    const roomRows = [];
+    r.days.forEach((d, di) => r.slots.forEach((sl, s) => (alloc.plan[di * S + s] || []).forEach(x => x.parts.forEach(p =>
+      roomRows.push({ Day: wdName(d.date), Date: fmtDate(d.date), Time: sl, Room: x.name, 'Course Code': p.code, Students: p.count, 'From ID': p.from, 'To ID': p.to })))));
     const heavy = stats.heavy.sort((a, b) => b.n - a.n).map(x => ({ 'Student ID': e.students[x.student].id, Name: e.students[x.student].name, Date: fmtDate(r.days[x.d].date), Exams: x.n, Courses: x.codes.join(', ') }));
     const loads = [];
     r.days.forEach((d, di) => r.slots.forEach((sl, s) => loads.push({ Day: wdName(d.date), Date: fmtDate(d.date), Time: sl, Students: stats.load[di * S + s] })));
     const wb = XLSX.utils.book_new();
     const add = (rows, name) => XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows.length ? rows : [{ '': 'none' }]), name);
-    add(sched, 'Schedule'); add(grid, 'By Day'); add(stud, 'Student Timetable'); add(heavy, 'Students 2+ per day'); add(loads, 'Slot Loads');
+    add(sched, 'Schedule'); add(grid, 'By Day'); add(stud, 'Student Timetable'); add(roomRows, 'Room Plan'); add(heavy, 'Students 2+ per day'); add(loads, 'Slot Loads');
     saveFile(`${label}_Exam_Schedule.xlsx`, XLSX.write(wb, { bookType: 'xlsx', type: 'array' }), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', $('genAt'));
   };
   // Save a file: inside the claude.ai preview use its save prompt, elsewhere a normal download
@@ -587,13 +684,14 @@
 
   // ---------------- settings file ----------------
   $('exportCfg').onclick = () => {
-    saveFile('exam-scheduler-settings.json', JSON.stringify({ cfg: state.cfg, extra: state.extra }, null, 2), 'application/json', $('cfgMsg'));
+    saveFile('exam-scheduler-settings.json', JSON.stringify({ cfg: state.cfg, extra: state.extra, rooms: state.rooms }, null, 2), 'application/json', $('cfgMsg'));
   };
   $('importCfg').addEventListener('change', async ev => {
     const f = ev.target.files[0]; if (!f) return;
     try {
       const j = JSON.parse(await f.text());
       if (Array.isArray(j.extra)) state.extra = j.extra;
+      if (Array.isArray(j.rooms)) state.rooms = j.rooms;
       for (const m of ['midterm', 'final']) if (j.cfg && j.cfg[m]) state.cfg[m] = Object.assign(clone(DEFAULTS[m]), j.cfg[m]);
       save(); renderAll();
     } catch (err) { $('cfgMsg').innerHTML = `<span class="err">Could not read settings file: ${esc(err.message)}</span>`; }
@@ -621,7 +719,7 @@
 
   function renderAll() {
     document.querySelectorAll('#tabs button').forEach(x => x.classList.toggle('active', x.dataset.mode === mode));
-    renderEnrInfo(); renderExtra(); renderForm(); renderFixed(); renderResults();
+    renderEnrInfo(); renderExtra(); renderRooms(); renderForm(); renderFixed(); renderResults();
   }
   renderAll();
 })();

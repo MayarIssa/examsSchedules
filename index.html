@@ -47,6 +47,25 @@
     <button id="addExtra" class="btn">+ Add course</button>
   </section>
 
+  <!-- Exam rooms -->
+  <section class="card">
+    <h2><span class="num">R</span> Exam rooms <small>القاعات</small></h2>
+    <p class="hint">All rooms together set how many students can sit an exam at the same time. Shared by midterm and final. Edit any room below.</p>
+    <div class="row wrap">
+      <label class="inline">Rooms<input type="number" id="roomCount" min="0" max="500" value="30"></label>
+      <label class="inline">Seats per room<input type="number" id="roomSeats" min="1" value="25"></label>
+      <button id="makeRooms" class="btn">Set rooms</button>
+      <button id="allSeats" class="btn small">Apply seats to all rooms</button>
+      <button id="addRoom" class="btn small">+ Add one room</button>
+    </div>
+    <div id="roomTotal"></div>
+    <details class="adv"><summary>Edit rooms one by one</summary>
+      <div class="scroll short"><table class="tbl" id="roomTbl">
+        <thead><tr><th>Room name</th><th>Seats</th><th></th></tr></thead><tbody></tbody>
+      </table></div>
+    </details>
+  </section>
+
   <!-- 2. Exam period -->
   <section class="card">
     <h2><span class="num">2</span> Exam period &amp; times <small>الأيام والمواعيد</small></h2>
@@ -90,7 +109,7 @@
   <section class="card">
     <h2><span class="num">4</span> Rules <small>القواعد</small></h2>
     <div class="grid3">
-      <label>Seats per time slot <span class="muted">0 = no limit</span><input type="number" id="capacity" min="0"></label>
+      <div class="field" style="margin:0"><span class="lbl">Seats per exam time</span><span id="seatInfo"></span></div>
       <label>Max exams per student per day <span class="muted">never exceeded</span><input type="number" id="maxPerDay" min="1" max="8"></label>
       <label>Spread exams to avoid back-to-back days <span class="muted">weight, 0 = off</span><input type="number" id="adjPen" min="0"></label>
     </div>
@@ -135,6 +154,9 @@
     <h3>Courses <span class="muted">— change a day/time by hand, or tick 🔒 to make it fixed</span></h3>
     <div class="row"><input type="search" id="courseFilter" placeholder="Filter courses…"></div>
     <div class="scroll"><table class="tbl" id="courseTbl"></table></div>
+
+    <h3>Room plan <span class="muted">— which rooms each exam uses (biggest course first, students split by ID)</span></h3>
+    <div id="roomPlan" class="scroll short"></div>
 
     <h3 id="heavyTitle">Students with heavy days</h3>
     <div class="scroll short"><table class="tbl" id="heavyTbl"></table></div>
