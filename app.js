@@ -139,7 +139,7 @@
     $('useCols').onclick = () => {
       const map = {};
       box.querySelectorAll('select').forEach(s => (map[s.dataset.col] = s.value));
-      if (!map.id || !map.code) { alert('Please choose the Student ID and Course code columns.'); return; }
+      if (!map.id || !map.code) { $('enrInfo').innerHTML = '<span class="err">Choose the Student ID and Course code columns first.</span>'; return; }
       buildEnrollment(pendingRows.rows, map, pendingRows.fileName);
       box.classList.add('hidden');
     };
@@ -560,26 +560,53 @@
     const wb = XLSX.utils.book_new();
     const add = (rows, name) => XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows.length ? rows : [{ '': 'none' }]), name);
     add(sched, 'Schedule'); add(grid, 'By Day'); add(stud, 'Student Timetable'); add(heavy, 'Students 2+ per day'); add(loads, 'Slot Loads');
-    XLSX.writeFile(wb, `${label}_Exam_Schedule.xlsx`);
+    saveFile(`${label}_Exam_Schedule.xlsx`, XLSX.write(wb, { bookType: 'xlsx', type: 'array' }), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', $('genAt'));
   };
+  // Save a file: inside the claude.ai preview use its save prompt, elsewhere a normal download
+  async function saveFile(name, data, mime, msgEl) {
+    const say = h => { if (msgEl) msgEl.innerHTML = h; };
+    if (window.claude && typeof window.claude.use === 'function') {
+      let dl = null;
+      try { dl = await window.claude.use('downloads'); } catch (e) { dl = null; }
+      if (dl) {
+        try { await dl.save({ filename: name, data: data instanceof ArrayBuffer ? new Blob([data]) : data }); say(`Saved ${esc(name)}.`); }
+        catch (e) { if (e && e.code !== 'declined') say(`<span class="err">Could not save the file (${esc(e && e.code)}).</span>`); }
+        return;
+      }
+    }
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([data], { type: mime }));
+    a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  }
   $('printBtn').onclick = () => window.print();
+  const EMBEDDED = (() => { try { return window.self !== window.top; } catch (e) { return true; } })();
+  if (EMBEDDED) {
+    $('printBtn').hidden = true;
+  }
 
   // ---------------- settings file ----------------
   $('exportCfg').onclick = () => {
-    const blob = new Blob([JSON.stringify({ cfg: state.cfg }, null, 2)], { type: 'application/json' });
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'exam-scheduler-settings.json'; a.click();
+    saveFile('exam-scheduler-settings.json', JSON.stringify({ cfg: state.cfg, extra: state.extra }, null, 2), 'application/json', $('cfgMsg'));
   };
   $('importCfg').addEventListener('change', async ev => {
     const f = ev.target.files[0]; if (!f) return;
     try {
       const j = JSON.parse(await f.text());
+      if (Array.isArray(j.extra)) state.extra = j.extra;
       for (const m of ['midterm', 'final']) if (j.cfg && j.cfg[m]) state.cfg[m] = Object.assign(clone(DEFAULTS[m]), j.cfg[m]);
       save(); renderAll();
-    } catch (err) { alert('Could not read settings file: ' + err.message); }
+    } catch (err) { $('cfgMsg').innerHTML = `<span class="err">Could not read settings file: ${esc(err.message)}</span>`; }
     ev.target.value = '';
   });
   $('resetCfg').onclick = () => {
-    if (!confirm(`Reset all ${mode} settings and fixed exams to the defaults?`)) return;
+    const btn = $('resetCfg');
+    if (!btn.dataset.armed) {
+      btn.dataset.armed = '1'; btn.textContent = `Click again to reset ${mode}`;
+      setTimeout(() => { delete btn.dataset.armed; btn.textContent = 'Reset this tab to defaults'; }, 4000);
+      return;
+    }
+    delete btn.dataset.armed; btn.textContent = 'Reset this tab to defaults';
     state.cfg[mode] = clone(DEFAULTS[mode]); delete state.results[mode]; save(); renderAll();
   };
 
