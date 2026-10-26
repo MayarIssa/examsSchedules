@@ -155,3 +155,21 @@ td.code { white-space: nowrap; }
 
 @media (max-width: 600px) { .top-tools { width: 100%; justify-content: flex-start; } .brand { flex-wrap: wrap; } }
 .file-btn { white-space: nowrap; }
+
+/* views: exam tabs vs TA tab */
+body.view-ta section.sec:not(.ta-only) { display: none !important; }
+body:not(.view-ta) section.ta-only { display: none !important; }
+.scroll.tall { max-height: 70vh; overflow: auto; }
+.bad-room { background: var(--bad-soft); color: var(--bad); }
+
+/* TA timetable like the paper sheet */
+table.matrix { font-size: 12px; border-collapse: separate; border-spacing: 0; }
+table.matrix th, table.matrix td { border: 1px solid var(--line); padding: 4px 6px; text-align: center; white-space: nowrap; }
+table.matrix thead th { position: sticky; top: 0; background: var(--card); z-index: 1; }
+table.matrix thead tr:nth-child(2) th { top: 34px; }
+table.matrix .mx-day { background: var(--brand-soft); color: var(--ink); }
+table.matrix .mx-name { text-align: start; font-weight: 600; position: sticky; inset-inline-start: 0; background: var(--card); }
+table.matrix .mx-on { background: var(--ok-soft); color: var(--ink); }
+table.matrix .mx-off { background: var(--chip); color: var(--muted); }
+table.matrix .mx-exam { background: var(--warn-soft); color: var(--warn); }
+table.matrix .mx-sum { font-variant-numeric: tabular-nums; background: var(--chip); }

@@ -35,7 +35,7 @@
 
   // ---------------- state ----------------
   let state = load();
-  let mode = state.mode || 'midterm';
+  let mode = state.view === 'ta' ? state.ta.examFor : (state.mode || 'midterm');
   let worker = null;
   const typingRows = new Set(); // fixed-exam rows where the code is being typed instead of picked
 
@@ -52,6 +52,13 @@
     s.folded = s.folded || {};
     s.lang = s.lang === 'ar' ? 'ar' : 'en';
     s.theme = ['light', 'dark'].includes(s.theme) ? s.theme : 'auto';
+    s.view = s.view === 'ta' ? 'ta' : 'exam';
+    const taDef = { list: [], seq: 0, examFor: 'midterm', seed: 1, result: {}, cfg: {
+      midterm: { perRoom: 1, offDays: 1, duties: null, roomTAs: {}, requests: [] },
+      final: { perRoom: 1, offDays: 3, duties: null, roomTAs: {}, requests: [] } } };
+    s.ta = Object.assign(taDef, s.ta || {});
+    for (const m of ['midterm', 'final']) s.ta.cfg[m] = Object.assign(clone(taDef.cfg[m]), (s.ta.cfg || {})[m] || {});
+    s.ta.result = s.ta.result || {};
     return s;
   }
   function defaultRooms(n, seats, name) { return Array.from({ length: n }, (_, i) => ({ name: (name || 'Room {n}').replace('{n}', i + 1), seats })); }
@@ -789,7 +796,7 @@
 
   // ---------------- settings file ----------------
   $('exportCfg').onclick = () => {
-    saveFile('exam-scheduler-settings.json', JSON.stringify({ cfg: state.cfg, extra: state.extra, order: state.order }, null, 2), 'application/json', $('cfgMsg'));
+    saveFile('exam-scheduler-settings.json', JSON.stringify({ cfg: state.cfg, extra: state.extra, order: state.order, ta: { list: state.ta.list, seq: state.ta.seq, cfg: state.ta.cfg } }, null, 2), 'application/json', $('cfgMsg'));
   };
   $('importCfg').addEventListener('change', async ev => {
     const f = ev.target.files[0]; if (!f) return;
@@ -797,6 +804,7 @@
       const j = JSON.parse(await f.text());
       if (Array.isArray(j.extra)) state.extra = j.extra;
       if (Array.isArray(j.order)) state.order = j.order;
+      if (j.ta && Array.isArray(j.ta.list)) { state.ta.list = j.ta.list; state.ta.seq = Math.max(state.ta.seq, j.ta.seq || 0); for (const m of ['midterm', 'final']) if (j.ta.cfg && j.ta.cfg[m]) state.ta.cfg[m] = Object.assign(state.ta.cfg[m], j.ta.cfg[m]); }
       if (Array.isArray(j.rooms)) for (const m of ['midterm', 'final']) if (j.cfg && j.cfg[m] && !j.cfg[m].rooms) j.cfg[m].rooms = clone(j.rooms);
       for (const m of ['midterm', 'final']) if (j.cfg && j.cfg[m]) state.cfg[m] = Object.assign(clone(DEFAULTS[m]), j.cfg[m]);
       typingRows.clear(); save(); renderAll();
@@ -811,29 +819,39 @@
       return;
     }
     delete btn.dataset.armed; btn.textContent = t('cfg.reset');
-    state.cfg[mode] = clone(DEFAULTS[mode]); delete state.results[mode]; typingRows.clear(); save(); renderAll();
+    if (state.view === 'ta') { state.ta.cfg[mode] = { perRoom: 1, offDays: mode === 'final' ? 3 : 1, duties: null, roomTAs: {}, requests: [] }; delete state.ta.result[mode]; }
+    else { state.cfg[mode] = clone(DEFAULTS[mode]); delete state.results[mode]; }
+    typingRows.clear(); save(); renderAll();
   };
 
   // ---------------- tabs ----------------
   $('tabs').addEventListener('click', ev => {
     const b = ev.target.closest('button'); if (!b) return;
-    mode = state.mode = b.dataset.mode; save();
+    if (b.dataset.view === 'ta') { state.view = 'ta'; mode = state.ta.examFor; }
+    else { state.view = 'exam'; mode = state.mode = b.dataset.mode; }
+    save();
     typingRows.clear();
     showWarnings([], []); $('runMsg').textContent = '';
     renderAll();
   });
 
   // ---------------- section order and folding ----------------
+  // ---------------- section order and folding ----------------
+  const inView = x => (state.view === 'ta' ? x.classList.contains('ta-only') : !x.classList.contains('ta-only'));
   function applyOrder() {
     const main = $('main'), secs = [...main.querySelectorAll('section.sec')];
     const keys = secs.map(x => x.dataset.sec);
     const order = state.order.filter(k => keys.includes(k)).concat(keys.filter(k => !state.order.includes(k)));
     const footer = main.querySelector('.muted-card');
     order.forEach(k => main.insertBefore(secs.find(x => x.dataset.sec === k), footer));
-    main.querySelectorAll('section.sec').forEach((x, i, all) => {
+    document.body.classList.toggle('view-ta', state.view === 'ta');
+    const vis = [...main.querySelectorAll('section.sec')].filter(inView);
+    vis.forEach((x, i) => {
       x.querySelector('.num').textContent = i + 1;
       x.querySelector('.mv-up').disabled = i === 0;
-      x.querySelector('.mv-down').disabled = i === all.length - 1;
+      x.querySelector('.mv-down').disabled = i === vis.length - 1;
+    });
+    main.querySelectorAll('section.sec').forEach(x => {
       const folded = !!state.folded[x.dataset.sec];
       x.classList.toggle('folded', folded);
       x.querySelector('.fold-btn').setAttribute('aria-expanded', String(!folded));
@@ -847,9 +865,10 @@
     const sec = ev.target.closest('section.sec'); if (!sec) return;
     const mv = ev.target.closest('.mv-up, .mv-down');
     if (mv) {
-      const keys = [...$('main').querySelectorAll('section.sec')].map(x => x.dataset.sec);
-      const i = keys.indexOf(sec.dataset.sec), j = mv.classList.contains('mv-up') ? i - 1 : i + 1;
-      if (j < 0 || j >= keys.length) return;
+      const all = [...$('main').querySelectorAll('section.sec')], keys = all.map(x => x.dataset.sec);
+      const vis = all.filter(inView), vi = vis.indexOf(sec), vj = mv.classList.contains('mv-up') ? vi - 1 : vi + 1;
+      if (vj < 0 || vj >= vis.length) return;
+      const i = keys.indexOf(sec.dataset.sec), j = keys.indexOf(vis[vj].dataset.sec);
       [keys[i], keys[j]] = [keys[j], keys[i]];
       state.order = keys; save(); applyOrder();
       sec.scrollIntoView({ block: 'nearest' });
@@ -860,13 +879,394 @@
       state.folded[sec.dataset.sec] = !state.folded[sec.dataset.sec]; save(); applyOrder();
     }
   });
-  $('foldAll').onclick = () => { document.querySelectorAll('section.sec').forEach(x => (state.folded[x.dataset.sec] = true)); save(); applyOrder(); };
-  $('openAll').onclick = () => { state.folded = {}; save(); applyOrder(); };
+  $('foldAll').onclick = () => { [...document.querySelectorAll('section.sec')].filter(inView).forEach(x => (state.folded[x.dataset.sec] = true)); save(); applyOrder(); };
+  $('openAll').onclick = () => { [...document.querySelectorAll('section.sec')].filter(inView).forEach(x => delete state.folded[x.dataset.sec]); save(); applyOrder(); };
   $('resetOrder').onclick = () => { state.order = []; save(); location.reload(); };
 
+  // ======================= TAs (invigilation) =======================
+  const taCfg = () => state.ta.cfg[mode];
+  const taList = () => state.ta.list.filter(x => String(x.name || '').trim());
+  const taById = uid => state.ta.list.find(x => x.uid === uid);
+  const optNum = v => (v === '' || v == null || isNaN(+v) ? null : Math.max(0, Math.round(+v)));
+  const examName = () => tabName(mode);
+  function addTAs(names, replace) {
+    if (replace) { state.ta.list = []; }
+    const key = n => String(n).toLowerCase().replace(/[–—−-]/g, '-').replace(/\s*-\s*/g, ' - ').replace(/\s+/g, ' ').trim();
+    const have = new Set(state.ta.list.map(x => key(x.name)));
+    let n = 0;
+    for (const raw of names) {
+      const name = String(raw).replace(/\s+/g, ' ').trim();
+      if (!name || have.has(key(name))) continue;
+      have.add(key(name));
+      state.ta.list.push({ uid: 'ta' + (++state.ta.seq), name, offDays: null, duties: null }); n++;
+    }
+    save(); renderTA();
+    return n;
+  }
+
+  // read names from a Word file (last cell of each table row), Excel/CSV (Name column or first column) or plain text
+  const HEADER_WORDS = /^(name|names|ta|tas|الاسم|اسم|الأسماء|الملاحظ|التاريخ|الفترة|اسم المعيد|المعيد)$/i;
+  const HEADER_CELL = /الفترة|الملاحظ|التاريخ|\d{1,2}\s*(am|pm)\b|Σ/i;
+  async function namesFromFile(f) {
+    const buf = new Uint8Array(await f.arrayBuffer());
+    if (/\.docx$/i.test(f.name)) {
+      const zip = XLSX.CFB.read(buf, { type: 'array' });
+      const entry = XLSX.CFB.find(zip, 'word/document.xml') || XLSX.CFB.find(zip, '/word/document.xml');
+      if (!entry) return [];
+      const xml = new TextDecoder('utf-8').decode(entry.content);
+      const doc = new DOMParser().parseFromString(xml, 'application/xml');
+      const W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+      const out = [];
+      for (const tr of doc.getElementsByTagNameNS(W, 'tr')) {
+        const cells = [...tr.getElementsByTagNameNS(W, 'tc')];
+        if (cells.length < 3) continue;
+        // the name sits in the first or last cell (Arabic tables put it last)
+        const text = c => [...c.getElementsByTagNameNS(W, 't')].map(x => x.textContent).join('').replace(/\s+/g, ' ').trim();
+        let name = text(cells[cells.length - 1]);
+        if (!/[A-Za-z؀-ۿ]{2}/.test(name) || HEADER_WORDS.test(name)) name = text(cells[0]);
+        if (!name || HEADER_WORDS.test(name) || HEADER_CELL.test(name) || !/[A-Za-z؀-ۿ]{2}/.test(name) || /^[Σ\d\s]+$/.test(name)) continue;
+        out.push(name);
+      }
+      return out;
+    }
+    if (/\.txt$/i.test(f.name)) return new TextDecoder('utf-8').decode(buf).split(/\r?\n/);
+    const wb = XLSX.read(buf, { type: 'array' });
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '' });
+    if (!rows.length) return [];
+    let col = rows[0].findIndex(h => /name|الاسم|اسم/i.test(String(h)));
+    const start = col >= 0 ? 1 : (HEADER_WORDS.test(String(rows[0][0]).trim()) ? 1 : 0);
+    if (col < 0) col = 0;
+    return rows.slice(start).map(r => r[col]).filter(v => String(v).trim());
+  }
+  $('taFile').addEventListener('change', async ev => {
+    const f = ev.target.files[0]; if (!f) return;
+    try {
+      const names = await namesFromFile(f);
+      if (!names.length) { $('taListMsg').textContent = t('ta.fileNoNames', { file: f.name }); }
+      else { const n = addTAs(names, false); $('taListMsg').textContent = t('ta.filesRead', { n: names.length, file: f.name }) + ' ' + t('ta.added', { n }); }
+    } catch (err) { $('taListMsg').innerHTML = `<span class="err">${esc(t('enroll.readErr', { msg: err.message }))}</span>`; }
+    ev.target.value = '';
+  });
+  $('taPasteAdd').onclick = () => { const n = addTAs($('taPaste').value.split('\n'), false); $('taListMsg').textContent = t('ta.added', { n }); $('taPaste').value = ''; };
+  $('taPasteReplace').onclick = () => { const n = addTAs($('taPaste').value.split('\n'), true); $('taListMsg').textContent = t('ta.added', { n }); $('taPaste').value = ''; };
+  $('taAddOne').onclick = () => {
+    state.ta.list.push({ uid: 'ta' + (++state.ta.seq), name: '', offDays: null, duties: null }); save(); renderTA();
+    const ins = $('taTbl').querySelectorAll('input[data-k=name]'); ins[ins.length - 1].focus();
+  };
+  $('taTbl').addEventListener('change', ev => {
+    const tr = ev.target.closest('tr'); if (!tr || !ev.target.dataset.k) return;
+    const x = taById(tr.dataset.uid), k = ev.target.dataset.k;
+    x[k] = k === 'name' ? ev.target.value.trim() : optNum(ev.target.value);
+    save(); renderTA();
+  });
+  $('taTbl').addEventListener('click', ev => {
+    const uid = ev.target.dataset.del; if (!uid) return;
+    state.ta.list = state.ta.list.filter(x => x.uid !== uid);
+    for (const m of ['midterm', 'final']) state.ta.cfg[m].requests = state.ta.cfg[m].requests.filter(q => q.uid !== uid);
+    save(); renderTA();
+  });
+
+  // rules
+  $('taExam').addEventListener('change', ev => { state.ta.examFor = mode = ev.target.value; save(); renderTA(); });
+  ['taPerRoom', 'taOffDays', 'taDuties'].forEach(id => $(id).addEventListener('change', () => {
+    const c = taCfg();
+    if (id === 'taPerRoom') c.perRoom = optNum($(id).value) ?? 1;
+    if (id === 'taOffDays') c.offDays = optNum($(id).value) ?? 0;
+    if (id === 'taDuties') c.duties = optNum($(id).value) || null;
+    save(); renderTA();
+  }));
+  $('taSpread').addEventListener('change', ev => { taCfg().spread = ev.target.value; save(); renderTA(); });
+  $('taPosts').addEventListener('change', ev => { taCfg().posts = ev.target.value.split('\n').map(x => x.trim()).filter(Boolean); save(); renderTA(); });
+  $('taRoomTbl').addEventListener('change', ev => {
+    const tr = ev.target.closest('tr'); if (!tr) return;
+    const v = optNum(ev.target.value), name = tr.dataset.room;
+    if (v == null) delete taCfg().roomTAs[name]; else taCfg().roomTAs[name] = v;
+    save(); renderTA();
+  });
+
+  // requested days off / own exams
+  $('taAddReq').onclick = () => {
+    const days = examDays(cfg());
+    taCfg().requests.push({ uid: '', date: days[0] ? days[0].date : '', slot: -1, kind: 'off', note: '' }); save(); renderTA();
+  };
+  $('taReqTbl').addEventListener('change', ev => {
+    const tr = ev.target.closest('tr'); if (!tr || !ev.target.dataset.k) return;
+    const q = taCfg().requests[+tr.dataset.i], k = ev.target.dataset.k;
+    q[k] = k === 'slot' ? +ev.target.value : ev.target.value;
+    if (k === 'slot') q.kind = +ev.target.value >= 0 ? (q.kind === 'off' ? 'exam' : q.kind) : 'off';
+    save(); renderTA();
+  });
+  $('taReqTbl').addEventListener('click', ev => {
+    const d = ev.target.dataset.del; if (d == null) return;
+    taCfg().requests.splice(+d, 1); save(); renderTA();
+  });
+
+  const roomNeed = name => { const v = taCfg().roomTAs[name]; return v != null ? v : taCfg().perRoom; };
+
+  // exam times with the posts that need TAs (rooms from the room plan, plus extra posts)
+  function taDemand() {
+    const cr = currentResult(); if (!cr) return null;
+    const { r } = cr, e = enr(), S = r.slots.length;
+    const { plan } = allocateRooms(r, e);
+    const posts = taCfg().posts || [];
+    const times = [];
+    r.days.forEach((d, di) => r.slots.forEach((sl, s) => {
+      const rooms = plan[di * S + s]; if (!rooms || !rooms.length) return;
+      const need = rooms.map(rm => ({ post: rm.name, n: roomNeed(rm.name), courses: rm.parts.map(p => p.code) }))
+        .concat(posts.map(p => ({ post: p, n: 1, courses: [] }))).filter(x => x.n > 0);
+      times.push({ d: di, s, need, total: need.reduce((a, b) => a + b.n, 0) });
+    }));
+    return { r, times, total: times.reduce((a, b) => a + b.total, 0) };
+  }
+
+  function taSignature() {
+    const r = state.results[mode];
+    return JSON.stringify([r && r.generatedAt, r && r.edited, state.ta.list, taCfg(), cfg().rooms]);
+  }
+
+  // The generator. Hard rules: requested days off and own exams; one place per TA per exam time.
+  // Then: give each TA their days off on the quietest days, and fill places by who is furthest below their target.
+  function generateTA(seed) {
+    const tas = taList();
+    if (!state.results[mode]) return { error: t('ta.errNoSchedule', { exam: examName() }) };
+    if (!tas.length) return { error: t('ta.errNoTAs') };
+    if (!cfg().rooms.length) return { error: t('ta.errNoRooms', { exam: examName() }) };
+    const dem = taDemand(); if (!dem) return { error: t('ta.errNoSchedule', { exam: examName() }) };
+    const { r, times, total } = dem, S = r.slots.length, D = r.days.length, c = taCfg();
+    let rs = (seed * 2654435761) >>> 0 || 1;
+    const rand = () => { rs ^= rs << 13; rs >>>= 0; rs ^= rs >>> 17; rs ^= rs << 5; rs >>>= 0; return rs / 4294967296; };
+    const dayIdx = new Map(r.days.map((x, i) => [x.date, i]));
+    const st = new Map(tas.map(x => [x.uid, { blockedDay: new Map(), blockedSlot: new Map(), autoOff: new Set(), duties: 0, perDay: {}, rooms: {}, target: 0, lost: 0 }]));
+    for (const q of c.requests) {
+      const s0 = st.get(q.uid), d = dayIdx.get(q.date);
+      if (!s0 || d == null) continue;
+      if (q.slot >= 0 && q.slot < S) s0.blockedSlot.set(d * S + q.slot, q.kind || 'exam');
+      else s0.blockedDay.set(d, q.kind || 'off');
+    }
+    // days off: requested whole days count; the rest go on the days with the most spare TAs
+    const peak = new Array(D).fill(0);
+    times.forEach(x => (peak[x.d] = Math.max(peak[x.d], x.total)));
+    const avail = new Array(D).fill(0);
+    for (const x of tas) for (let d = 0; d < D; d++) if (!st.get(x.uid).blockedDay.has(d)) avail[d]++;
+    const order = tas.slice().sort(() => rand() - 0.5);
+    for (const x of order) {
+      const s0 = st.get(x.uid);
+      let need = Math.max(0, (x.offDays != null ? x.offDays : c.offDays) - s0.blockedDay.size);
+      while (need-- > 0) {
+        let best = -1, bestV = -Infinity;
+        for (let d = 0; d < D; d++) {
+          if (!peak[d] || s0.blockedDay.has(d) || s0.autoOff.has(d)) continue;
+          const v = avail[d] - peak[d] + rand() * 0.5;
+          if (v > bestV) { bestV = v; best = d; }
+        }
+        if (best < 0) break;
+        s0.autoOff.add(best); avail[best]--;
+      }
+    }
+    // targets: a TA's own number, the rule's number, or an equal share of what is left
+    const fixedT = tas.filter(x => x.duties != null || c.duties != null);
+    const autoT = tas.filter(x => x.duties == null && c.duties == null);
+    const fixedSum = fixedT.reduce((a, x) => a + (x.duties != null ? x.duties : c.duties), 0);
+    const share = autoT.length ? Math.ceil(Math.max(0, total - fixedSum) / autoT.length) : 0;
+    tas.forEach(x => (st.get(x.uid).target = x.duties != null ? x.duties : c.duties != null ? c.duties : share));
+
+    const assign = [], shortages = [];
+    const spread = (c.spread || 'spread') === 'spread';
+    for (const tm of times) {
+      const g = tm.d * S + tm.s, used = new Set();
+      const seats = [];
+      tm.need.forEach(p => { for (let k = 0; k < p.n; k++) seats.push(p); });
+      for (const p of seats) {
+        let pick = null;
+        for (let level = 0; level < 3 && !pick; level++) {
+          let bestKey = null;
+          for (const x of tas) {
+            const s0 = st.get(x.uid);
+            if (used.has(x.uid) || s0.blockedDay.has(tm.d) || s0.blockedSlot.has(g)) continue;
+            if (level < 2 && s0.autoOff.has(tm.d)) continue;
+            if (level === 0 && s0.duties >= s0.target) continue;
+            const today = s0.perDay[tm.d] || 0;
+            const key = [s0.duties - s0.target, spread ? today : -today, s0.rooms[p.post] || 0, rand()];
+            if (!bestKey || cmpKey(key, bestKey) < 0) { bestKey = key; pick = x; }
+          }
+        }
+        if (!pick) { const sh = shortages.find(z => z.g === g && z.post === p.post); if (sh) sh.n++; else shortages.push({ g, d: tm.d, s: tm.s, post: p.post, n: 1 }); continue; }
+        const s0 = st.get(pick.uid);
+        if (s0.autoOff.has(tm.d)) { s0.autoOff.delete(tm.d); s0.lost++; }
+        used.add(pick.uid); s0.duties++; s0.perDay[tm.d] = (s0.perDay[tm.d] || 0) + 1; s0.rooms[p.post] = (s0.rooms[p.post] || 0) + 1;
+        assign.push({ g, d: tm.d, s: tm.s, post: p.post, courses: p.courses, uid: pick.uid });
+      }
+    }
+    const per = {};
+    for (const x of tas) {
+      const s0 = st.get(x.uid);
+      per[x.uid] = { duties: s0.duties, target: s0.target, lost: s0.lost,
+        offReq: [...s0.blockedDay.entries()], offAuto: [...s0.autoOff], slotBlocks: [...s0.blockedSlot.entries()] };
+    }
+    return { result: { generatedAt: new Date().toISOString(), seed, days: r.days, slots: r.slots, assign, shortages, per, total, sig: taSignature() } };
+  }
+  function cmpKey(a, b) { for (let i = 0; i < a.length; i++) { if (a[i] < b[i]) return -1; if (a[i] > b[i]) return 1; } return 0; }
+
+  function runTA(newSeed) {
+    if (newSeed) state.ta.seed = (state.ta.seed || 1) + 1;
+    const out = generateTA(state.ta.seed || 1);
+    if (out.error) { $('taWarn').innerHTML = `<div class="err">${esc(out.error)}</div>`; return; }
+    state.ta.result[mode] = out.result; save();
+    $('taMsg').textContent = t('ta.done');
+    renderTA();
+  }
+  $('taRun').onclick = () => runTA(false);
+  $('taAgain').onclick = () => runTA(true);
+
+  // weeks start on Saturday
+  const weekOf = date => Math.floor((parseISO(date) / 864e5 - 2) / 7);
+
+  // the timetable like the paper sheet: one row per TA, one column per exam time
+  function taMatrix(res) {
+    const S = res.slots.length;
+    const cols = [];
+    res.days.forEach((d, di) => res.slots.forEach((sl, s) => cols.push({ d: di, s, g: di * S + s, date: d.date, slot: sl })));
+    const weeks = [...new Set(res.days.map(d => weekOf(d.date)))];
+    const at = {};
+    res.assign.forEach(a => (at[a.uid + '|' + a.g] = a.post));
+    const rows = taList().filter(x => res.per[x.uid]).map(x => {
+      const p = res.per[x.uid];
+      const offDay = new Map(p.offReq.concat(p.offAuto.map(d => [d, 'off'])));
+      const slotB = new Map(p.slotBlocks);
+      const cells = cols.map(cc => at[x.uid + '|' + cc.g] || (slotB.has(cc.g) ? (slotB.get(cc.g) === 'off' ? t('ta.cellOff') : t('ta.cellExam'))
+        : offDay.has(cc.d) ? (offDay.get(cc.d) === 'exam' ? t('ta.cellExam') : t('ta.cellOff')) : ''));
+      const perWeek = weeks.map(w => res.assign.filter(a => a.uid === x.uid && weekOf(res.days[a.d].date) === w).length);
+      return { ta: x, cells, perWeek, total: p.duties, target: p.target };
+    });
+    return { cols, weeks, rows };
+  }
+
+  function renderTA() {
+    if (state.view !== 'ta') return;
+    const c = taCfg(), list = state.ta.list;
+    // list
+    $('taTbl').querySelector('tbody').innerHTML = list.map((x, i) => `<tr data-uid="${x.uid}">
+      <td>${i + 1}</td>
+      <td><input value="${esc(x.name)}" data-k="name" placeholder="${esc(t('ta.namePh'))}" style="width:100%;min-width:180px"></td>
+      <td><input type="number" min="0" value="${x.offDays != null ? x.offDays : ''}" data-k="offDays" placeholder="${c.offDays}" class="seats"></td>
+      <td><input type="number" min="0" value="${x.duties != null ? x.duties : ''}" data-k="duties" placeholder="${c.duties != null ? c.duties : esc(t('ta.auto'))}" class="seats"></td>
+      <td><button class="icon-btn" data-del="${x.uid}" title="${esc(t('btn.remove'))}">×</button></td></tr>`).join('') ||
+      `<tr><td colspan="5" class="muted">${esc(t('ta.none'))}</td></tr>`;
+    if (!$('taListMsg').textContent && list.length) $('taListMsg').textContent = t('ta.count', { n: list.length });
+    // rules
+    const days = examDays(cfg()), dem = state.results[mode] ? taDemand() : null;
+    $('taExam').value = mode;
+    $('taPerRoom').value = c.perRoom; $('taOffDays').value = c.offDays; $('taDuties').value = c.duties != null ? c.duties : '';
+    $('taSpread').value = c.spread || 'spread'; $('taPosts').value = (c.posts || []).join('\n');
+    $('taOffD').textContent = t('ta.offD', { n: days.length });
+    const nTA = taList().length;
+    $('taDutiesD').textContent = t('ta.dutiesD', { n: dem && nTA ? Math.ceil(dem.total / nTA) : '—' });
+    $('taRoomTbl').querySelector('tbody').innerHTML = cfg().rooms.map(rm => `<tr data-room="${esc(rm.name)}"><td>${esc(rm.name)}</td><td>${esc(rm.seats)}</td>
+      <td><input type="number" min="0" class="seats" value="${c.roomTAs[rm.name] != null ? c.roomTAs[rm.name] : ''}" placeholder="${c.perRoom}"></td></tr>`).join('') ||
+      `<tr><td colspan="3" class="muted">${esc(t('rooms.empty'))}</td></tr>`;
+    // requests
+    const taOpts = cur => `<option value="">${esc(t('ta.pickTA'))}</option>` + taList().map(x => `<option value="${x.uid}" ${x.uid === cur ? 'selected' : ''}>${esc(x.name)}</option>`).join('');
+    $('taReqTbl').querySelector('tbody').innerHTML = c.requests.map((q, i) => `<tr data-i="${i}">
+      <td><select data-k="uid">${taOpts(q.uid)}</select></td>
+      <td><select data-k="date">${days.map(d => `<option value="${d.date}" ${d.date === q.date ? 'selected' : ''}>${esc(wdName(d.date))} ${fmtDate(d.date)}</option>`).join('')}</select></td>
+      <td><select data-k="slot"><option value="-1">${esc(t('ta.allDay'))}</option>${cfg().slots.map((sl, si) => `<option value="${si}" ${si === q.slot ? 'selected' : ''}>${esc(sl)}</option>`).join('')}</select></td>
+      <td><select data-k="kind"><option value="off" ${q.kind !== 'exam' ? 'selected' : ''}>${esc(t('ta.kindOff'))}</option><option value="exam" ${q.kind === 'exam' ? 'selected' : ''}>${esc(t('ta.kindExam'))}</option></select></td>
+      <td><input value="${esc(q.note || '')}" data-k="note" placeholder="${esc(t('ta.notePh'))}"></td>
+      <td><button class="icon-btn" data-del="${i}" title="${esc(t('btn.remove'))}">×</button></td></tr>`).join('') ||
+      `<tr><td colspan="6" class="muted">—</td></tr>`;
+    renderTAResult();
+  }
+
+  function renderTAResult() {
+    const res = state.ta.result[mode];
+    $('taOut').classList.toggle('hidden', !res);
+    const warn = [];
+    if (!state.results[mode]) warn.push(`<div class="warn">${esc(t('ta.errNoSchedule', { exam: examName() }))}</div>`);
+    if (!res) { $('taWarn').innerHTML = warn.join(''); return; }
+    if (res.sig !== taSignature()) warn.push(`<div class="warn">${esc(t('ta.stale'))}</div>`);
+    const S = res.slots.length, timeLabel = (d, s) => `${wdName(res.days[d].date)} ${fmtDate(res.days[d].date)} ${res.slots[s]}`;
+    const shortBy = {};
+    res.shortages.forEach(z => (shortBy[z.g] = shortBy[z.g] || { d: z.d, s: z.s, n: 0, posts: [] }, shortBy[z.g].n += z.n, shortBy[z.g].posts.push(z.post)));
+    Object.values(shortBy).forEach(z => warn.push(`<div class="err">${esc(t('ta.shortage', { time: timeLabel(z.d, z.s), room: z.posts.join(', '), n: z.n }))}</div>`));
+    const lost = Object.values(res.per).filter(p => p.lost).length;
+    if (lost) warn.push(`<div class="warn">${esc(t('ta.lostOff', { n: lost }))}</div>`);
+    $('taWarn').innerHTML = warn.join('');
+    const missing = res.shortages.reduce((a, z) => a + z.n, 0);
+    const counts = Object.values(res.per).map(p => p.duties);
+    $('taSummary').innerHTML = [
+      [res.total, t('ta.sNeeded'), ''], [res.assign.length, t('ta.sFilled'), 'good'], [missing, t('ta.sMissing'), missing ? 'bad' : 'good'],
+      [counts.length, t('ta.sTAs'), ''], [counts.length ? Math.min(...counts) + '–' + Math.max(...counts) : '—', t('ta.sRange'), '']
+    ].map(([v, l, k]) => `<div class="stat ${k}"><b>${esc(v)}</b><span>${esc(l)}</span></div>`).join('');
+    // timetable
+    const mx = taMatrix(res), q = $('taFilter').value.trim().toLowerCase();
+    const head1 = `<tr><th rowspan="2">#</th><th rowspan="2">${esc(t('ta.thName'))}</th>` +
+      res.days.map(d => `<th colspan="${S}" class="mx-day">${esc(wdName(d.date))}<br><small>${fmtDate(d.date)}</small></th>`).join('') +
+      mx.weeks.map((w, i) => `<th rowspan="2">${esc(t('ta.week', { n: i + 1 }))}</th>`).join('') + `<th rowspan="2">${esc(t('ta.total'))}</th></tr>`;
+    const head2 = '<tr>' + res.days.map(() => res.slots.map(sl => `<th class="mx-slot" dir="ltr">${esc(sl)}</th>`).join('')).join('') + '</tr>';
+    const body = mx.rows.filter(x => !q || x.ta.name.toLowerCase().includes(q)).map((x, i) => `<tr><td>${i + 1}</td><td class="mx-name">${esc(x.ta.name)}</td>` +
+      x.cells.map(v => `<td class="${v === t('ta.cellOff') ? 'mx-off' : v === t('ta.cellExam') ? 'mx-exam' : v ? 'mx-on' : ''}">${esc(v)}</td>`).join('') +
+      x.perWeek.map(n => `<td class="mx-sum">${n}</td>`).join('') + `<td class="mx-sum"><b>${x.total}</b></td></tr>`).join('');
+    $('taMatrix').innerHTML = `<thead>${head1}${head2}</thead><tbody>${body}</tbody>`;
+    // by exam time
+    const byG = {};
+    res.assign.forEach(a => ((byG[a.g] = byG[a.g] || {})[a.post] = (byG[a.g][a.post] || []).concat(a.uid)));
+    let html = '';
+    res.days.forEach((d, di) => res.slots.forEach((sl, s) => {
+      const g = di * S + s, posts = byG[g], short = res.shortages.filter(z => z.g === g);
+      if (!posts && !short.length) return;
+      html += `<div class="room-cell"><div class="room-head"><b>${esc(wdName(d.date))} ${fmtDate(d.date)}</b> · <span dir="ltr">${esc(sl)}</span></div><div class="room-list">` +
+        Object.entries(posts || {}).map(([p, uids]) => `<span class="room"><b>${esc(p)}</b> ${uids.map(u => esc((taById(u) || {}).name || '?')).join('، ')}</span>`).join('') +
+        short.map(z => `<span class="room bad-room"><b>${esc(z.post)}</b> ${esc(t('ta.missing'))} ×${z.n}</span>`).join('') + '</div></div>';
+    }));
+    $('taPlan').innerHTML = html;
+  }
+  $('taFilter').addEventListener('input', renderTAResult);
+
+  // downloads
+  document.querySelector('[data-sec=taResult] .downloads').addEventListener('click', ev => {
+    const kind = ev.target.dataset && ev.target.dataset.tadl; if (!kind) return;
+    const res = state.ta.result[mode]; if (!res) return;
+    const X = k => t('x.' + k), S = res.slots.length;
+    const wb = XLSX.utils.book_new();
+    if (state.lang === 'ar') wb.Workbook = { Views: [{ RTL: true }] };
+    const add = (ws, name) => XLSX.utils.book_append_sheet(wb, ws, name.slice(0, 31));
+    const mx = taMatrix(res);
+    const matrixSheet = () => {
+      const h1 = ['#', X('TA')], h2 = ['', ''];
+      res.days.forEach(d => res.slots.forEach((sl, s) => { h1.push(s === 0 ? `${wdName(d.date)} – ${fmtDate(d.date)}` : ''); h2.push(sl); }));
+      mx.weeks.forEach((w, i) => { h1.push(t('ta.week', { n: i + 1 })); h2.push(''); });
+      h1.push(t('ta.total')); h2.push('');
+      const aoa = [h1, h2].concat(mx.rows.map((x, i) => [i + 1, x.ta.name, ...x.cells, ...x.perWeek, x.total]));
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      ws['!merges'] = res.days.map((d, di) => ({ s: { r: 0, c: 2 + di * S }, e: { r: 0, c: 2 + di * S + S - 1 } })).filter(m => S > 1);
+      ws['!cols'] = [{ wch: 4 }, { wch: 26 }].concat(new Array(res.days.length * S).fill({ wch: 12 }));
+      return ws;
+    };
+    const byRoom = res.assign.slice().sort((a, b) => a.g - b.g || String(a.post).localeCompare(String(b.post))).map(a => ({
+      [X('Day')]: wdName(res.days[a.d].date), [X('Date')]: fmtDate(res.days[a.d].date), [X('Time')]: res.slots[a.s], [X('Post')]: a.post,
+      [X('Courses')]: a.courses.join(', '), [X('TA')]: (taById(a.uid) || {}).name || '' }))
+      .concat(res.shortages.map(z => ({ [X('Day')]: wdName(res.days[z.d].date), [X('Date')]: fmtDate(res.days[z.d].date), [X('Time')]: res.slots[z.s], [X('Post')]: z.post, [X('Courses')]: '', [X('TA')]: t('ta.missing') + ' ×' + z.n })));
+    const offRows = [];
+    taList().forEach(x => {
+      const p = res.per[x.uid]; if (!p) return;
+      const notes = taCfg().requests.filter(q => q.uid === x.uid);
+      p.offReq.forEach(([d, kind]) => offRows.push({ [X('TA')]: x.name, [X('Day')]: wdName(res.days[d].date), [X('Date')]: fmtDate(res.days[d].date), [X('Time')]: t('ta.allDay'), [X('Type')]: X('Requested') + ' · ' + t(kind === 'exam' ? 'ta.kindExam' : 'ta.kindOff'), [X('Note')]: (notes.find(q => q.date === res.days[d].date && q.slot < 0) || {}).note || '' }));
+      p.slotBlocks.forEach(([g, kind]) => offRows.push({ [X('TA')]: x.name, [X('Day')]: wdName(res.days[Math.floor(g / S)].date), [X('Date')]: fmtDate(res.days[Math.floor(g / S)].date), [X('Time')]: res.slots[g % S], [X('Type')]: X('Requested') + ' · ' + t(kind === 'off' ? 'ta.kindOff' : 'ta.kindExam'), [X('Note')]: (notes.find(q => q.date === res.days[Math.floor(g / S)].date && q.slot === g % S) || {}).note || '' }));
+      p.offAuto.forEach(d => offRows.push({ [X('TA')]: x.name, [X('Day')]: wdName(res.days[d].date), [X('Date')]: fmtDate(res.days[d].date), [X('Time')]: t('ta.allDay'), [X('Type')]: X('Given'), [X('Note')]: '' }));
+    });
+    const sheet = rows => XLSX.utils.json_to_sheet(rows.length ? rows : [{ '': t('x.none') }]);
+    const kinds = kind === 'all' ? ['matrix', 'byRoom', 'off'] : [kind];
+    if (kinds.includes('matrix')) add(matrixSheet(), t('sh.taMatrix'));
+    if (kinds.includes('byRoom')) add(sheet(byRoom), t('sh.taSchedule'));
+    if (kinds.includes('off')) add(sheet(offRows), t('sh.taOff'));
+    const label = mode === 'final' ? 'Final' : 'Midterm';
+    const base = { all: 'TA_invigilation', matrix: 'TA_timetable', byRoom: 'TA_schedule_by_room', off: 'TA_days_off' }[kind];
+    saveFile(`${label}_${base}.xlsx`, XLSX.write(wb, { bookType: 'xlsx', type: 'array' }), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', $('taDlMsg'));
+  });
+
   function renderAll() {
-    document.querySelectorAll('#tabs button').forEach(x => x.classList.toggle('active', x.dataset.mode === mode));
-    applyOrder(); renderEnrInfo(); renderExtra(); renderRooms(); renderForm(); renderFixed(); renderResults();
+    document.querySelectorAll('#tabs button').forEach(x => x.classList.toggle('active', state.view === 'ta' ? x.dataset.view === 'ta' : x.dataset.mode === mode));
+    applyOrder(); renderEnrInfo(); renderExtra(); renderRooms(); renderForm(); renderFixed(); renderResults(); renderTA();
   }
   applyTheme();
   applyLang();

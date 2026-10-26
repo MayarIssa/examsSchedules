@@ -26,6 +26,7 @@
   <nav class="tabs" id="tabs">
     <button data-mode="midterm" class="active" data-i18n="tab.midterm">Midterm</button>
     <button data-mode="final" data-i18n="tab.final">Final</button>
+    <button data-view="ta" data-i18n="tab.ta">TAs</button>
   </nav>
 </header>
 
@@ -36,7 +37,7 @@
     <button id="openAll" class="btn small" data-i18n="btn.openAll"></button>
   </div>
 
-  <section class="card sec" data-sec="enroll">
+  <section class="card sec exam-only" data-sec="enroll">
     <h2><span class="num"></span><span class="sec-title" data-i18n="sec.enroll"></span></h2>
     <div class="sec-body">
       <p class="hint" data-i18n="enroll.hint"></p>
@@ -48,7 +49,7 @@
     </div>
   </section>
 
-  <section class="card sec" data-sec="extra">
+  <section class="card sec exam-only" data-sec="extra">
     <h2><span class="num"></span><span class="sec-title" data-i18n="sec.extra"></span></h2>
     <div class="sec-body">
       <p class="hint" data-i18n="extra.hint"></p>
@@ -60,7 +61,7 @@
     </div>
   </section>
 
-  <section class="card sec" data-sec="rooms">
+  <section class="card sec exam-only" data-sec="rooms">
     <h2><span class="num"></span><span class="sec-title" data-i18n="sec.rooms"></span></h2>
     <div class="sec-body">
       <p class="hint" id="roomsHint"></p>
@@ -81,7 +82,7 @@
     </div>
   </section>
 
-  <section class="card sec" data-sec="period">
+  <section class="card sec exam-only" data-sec="period">
     <h2><span class="num"></span><span class="sec-title" data-i18n="sec.period"></span></h2>
     <div class="sec-body">
       <div class="grid2">
@@ -101,7 +102,7 @@
     </div>
   </section>
 
-  <section class="card sec" data-sec="fixed">
+  <section class="card sec exam-only" data-sec="fixed">
     <h2><span class="num"></span><span class="sec-title" data-i18n="sec.fixed"></span></h2>
     <div class="sec-body">
       <p class="hint" data-i18n="fixed.hint"></p>
@@ -122,7 +123,7 @@
     </div>
   </section>
 
-  <section class="card sec" data-sec="rules">
+  <section class="card sec exam-only" data-sec="rules">
     <h2><span class="num"></span><span class="sec-title" data-i18n="sec.rules"></span></h2>
     <div class="sec-body">
       <p class="hint" data-i18n="rules.hint"></p>
@@ -176,7 +177,7 @@
     </div>
   </section>
 
-  <section class="card sec hidden" data-sec="results" id="results">
+  <section class="card sec exam-only hidden" data-sec="results" id="results">
     <h2><span class="num"></span><span class="sec-title" data-i18n="sec.results"></span></h2>
     <div class="sec-body">
       <div class="row wrap">
@@ -211,6 +212,111 @@
       <h3 data-i18n="lookup.title"></h3>
       <div class="row"><input type="search" id="studentSearch" data-i18n-ph="ph.student"></div>
       <div id="studentOut"></div>
+    </div>
+  </section>
+
+  <section class="card sec ta-only" data-sec="taList">
+    <h2><span class="num"></span><span class="sec-title" data-i18n="sec.taList"></span></h2>
+    <div class="sec-body">
+      <p class="hint" data-i18n="ta.listHint"></p>
+      <div class="row wrap">
+        <label class="file-btn"><span data-i18n="ta.upload"></span><input type="file" id="taFile" accept=".docx,.xlsx,.xls,.csv,.txt"></label>
+        <button id="taAddOne" class="btn small" data-i18n="ta.addOne"></button>
+        <span id="taListMsg" class="muted"></span>
+      </div>
+      <details class="paste">
+        <summary data-i18n="ta.pasteSummary"></summary>
+        <textarea id="taPaste" rows="5" data-i18n-ph="ta.pastePh"></textarea>
+        <div class="row wrap">
+          <button id="taPasteAdd" class="btn small" data-i18n="ta.pasteAdd"></button>
+          <button id="taPasteReplace" class="btn small" data-i18n="ta.pasteReplace"></button>
+        </div>
+      </details>
+      <div class="scroll short"><table class="tbl" id="taTbl">
+        <thead><tr><th>#</th><th data-i18n="ta.thName"></th><th data-i18n="ta.thOff"></th><th data-i18n="ta.thDuties"></th><th></th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+    </div>
+  </section>
+
+  <section class="card sec ta-only" data-sec="taRules">
+    <h2><span class="num"></span><span class="sec-title" data-i18n="sec.taRules"></span></h2>
+    <div class="sec-body">
+      <div class="rules">
+        <div class="rule">
+          <div><b data-i18n="ta.examT"></b><span class="muted" data-i18n="ta.examD"></span></div>
+          <select id="taExam"><option value="midterm" data-i18n="tab.midterm"></option><option value="final" data-i18n="tab.final"></option></select>
+        </div>
+        <div class="rule">
+          <div><b data-i18n="ta.perRoomT"></b><span class="muted" data-i18n="ta.perRoomD"></span></div>
+          <input type="number" id="taPerRoom" min="0" max="10">
+        </div>
+        <div class="rule">
+          <div><b data-i18n="ta.offT"></b><span class="muted" id="taOffD"></span></div>
+          <input type="number" id="taOffDays" min="0">
+        </div>
+        <div class="rule">
+          <div><b data-i18n="ta.dutiesT"></b><span class="muted" id="taDutiesD"></span></div>
+          <input type="number" id="taDuties" min="0" data-i18n-ph="ta.auto">
+        </div>
+        <div class="rule">
+          <div><b data-i18n="ta.spreadT"></b><span class="muted" data-i18n="ta.spreadD"></span></div>
+          <select id="taSpread"><option value="spread" data-i18n="ta.spread1"></option><option value="group" data-i18n="ta.spread2"></option></select>
+        </div>
+        <div class="rule">
+          <div><b data-i18n="ta.postsT"></b><span class="muted" data-i18n="ta.postsD"></span></div>
+          <textarea id="taPosts" rows="3" dir="ltr" placeholder="F3 FLOOR&#10;F4 FLOOR"></textarea>
+        </div>
+      </div>
+      <details class="adv"><summary data-i18n="ta.roomsSummary"></summary>
+        <p class="hint" data-i18n="ta.roomsHint"></p>
+        <div class="scroll short"><table class="tbl" id="taRoomTbl">
+          <thead><tr><th data-i18n="th.room"></th><th data-i18n="th.seats"></th><th data-i18n="ta.thRoomTAs"></th></tr></thead><tbody></tbody>
+        </table></div>
+      </details>
+    </div>
+  </section>
+
+  <section class="card sec ta-only" data-sec="taOff">
+    <h2><span class="num"></span><span class="sec-title" data-i18n="sec.taOff"></span></h2>
+    <div class="sec-body">
+      <p class="hint" data-i18n="ta.offHint"></p>
+      <div class="scroll short"><table class="tbl" id="taReqTbl">
+        <thead><tr><th data-i18n="ta.thName"></th><th data-i18n="th.day"></th><th data-i18n="ta.thTime"></th><th data-i18n="ta.thKind"></th><th data-i18n="ta.thNote"></th><th></th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+      <button id="taAddReq" class="btn" data-i18n="ta.addReq"></button>
+    </div>
+  </section>
+
+  <section class="card sec ta-only" data-sec="taResult">
+    <h2><span class="num"></span><span class="sec-title" data-i18n="sec.taResult"></span></h2>
+    <div class="sec-body">
+      <div class="row wrap actions">
+        <button id="taRun" class="btn primary" data-i18n="ta.run"></button>
+        <button id="taAgain" class="btn" data-i18n="ta.again"></button>
+        <span id="taMsg" class="muted"></span>
+      </div>
+      <div id="taWarn"></div>
+      <div id="taOut" class="hidden">
+        <div class="downloads">
+          <span class="lbl" data-i18n="dl.label"></span>
+          <div class="row wrap">
+            <button class="btn primary" data-tadl="all" data-i18n="ta.dlAll"></button>
+            <button class="btn" data-tadl="matrix" data-i18n="ta.dlMatrix"></button>
+            <button class="btn" data-tadl="byRoom" data-i18n="ta.dlByRoom"></button>
+            <button class="btn" data-tadl="off" data-i18n="ta.dlOff"></button>
+          </div>
+          <span id="taDlMsg" class="muted"></span>
+        </div>
+        <div id="taSummary" class="stats"></div>
+        <h3 data-i18n="ta.matrix"></h3>
+        <p class="hint" data-i18n="ta.matrixHint"></p>
+        <div class="row"><input type="search" id="taFilter" data-i18n-ph="ta.filterPh"></div>
+        <div class="scroll tall"><table class="tbl matrix" id="taMatrix"></table></div>
+        <h3 data-i18n="ta.byTime"></h3>
+        <div id="taPlan" class="scroll short"></div>
+      </div>
     </div>
   </section>
 

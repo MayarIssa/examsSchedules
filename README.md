@@ -11,6 +11,8 @@ Everything runs in the browser. Nothing is uploaded to a server.
 5. **Rules**: max exams per student per day, and how strongly to avoid 2/3/4 exams in one day or exams on back-to-back days.
 6. **Generate**, review, edit by hand if needed, and download the Excel file.
 
+**TAs tab** (invigilation): upload the TA names (Word sheet, Excel/CSV or pasted text), set TAs per room, extra posts (e.g. floor supervisors), days off per TA and exam times per TA, and add requested days off or a TA's own exam times. The website gives each TA their days off on the quietest days and fills every room in use, then exports a timetable like the paper invigilation sheet.
+
 Midterm and final have separate settings. Settings and fixed exams are saved in the browser and can be exported/imported as a JSON file.
 
 ## Files

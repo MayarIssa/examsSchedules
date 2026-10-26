@@ -221,3 +221,81 @@ window.I18N = {
     'wdShort': ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت']
   }
 };
+
+/* TA (invigilation) tab */
+Object.assign(window.I18N.en, {
+  'tab.ta': 'TAs',
+  'sec.taList': 'Teaching assistants', 'sec.taRules': 'Invigilation rules', 'sec.taOff': 'Requested days off', 'sec.taResult': 'Invigilation schedule',
+  'ta.listHint': 'Upload an Excel/CSV file with the TA names (a "Name" column, or the first column), or paste names one per line. Leave a TA’s own numbers empty to use the rules below.',
+  'ta.upload': 'Upload TA names', 'ta.addOne': '+ Add one TA', 'ta.pasteSummary': 'Paste names', 'ta.pastePh': 'One name per line',
+  'ta.pasteAdd': 'Add to the list', 'ta.pasteReplace': 'Replace the list',
+  'ta.thName': 'TA name', 'ta.thOff': 'Days off', 'ta.thDuties': 'Exam times to attend', 'ta.thNote': 'Note', 'ta.thRoomTAs': 'TAs in this room',
+  'ta.added': '{n} TAs added.', 'ta.count': '{n} TAs in the list.', 'ta.none': 'No TAs yet. Upload a file or paste names.', 'ta.namePh': 'TA name',
+  'ta.examT': 'Which exam', 'ta.examD': 'The TA schedule uses this exam’s timetable and room plan.',
+  'ta.perRoomT': 'TAs in each room', 'ta.perRoomD': 'Used for every room unless a room has its own number below.',
+  'ta.offT': 'Days off for each TA', 'ta.offD': 'Out of {n} exam days. Requested days off count toward this; the website picks the rest.',
+  'ta.dutiesT': 'Exam times each TA attends', 'ta.dutiesD': 'Leave empty to share the work equally (about {n} each now).', 'ta.auto': 'Auto',
+  'ta.roomsSummary': 'TAs needed per room', 'ta.roomsHint': 'Leave empty to use “TAs in each room”. These rooms come from the exam rooms board of the chosen exam.',
+  'ta.offHint': 'Days a TA cannot come (urgent reasons). These are always respected and count as that TA’s days off.',
+  'ta.addReq': '+ Add a day off', 'ta.pickTA': '— choose a TA —', 'ta.notePh': 'optional',
+  'ta.run': 'Generate TA schedule', 'ta.again': 'Try another arrangement', 'ta.done': 'Done.',
+  'ta.errNoSchedule': 'Generate the {exam} schedule first (in the {exam} tab).', 'ta.errNoTAs': 'Add the TA names first.', 'ta.errNoRooms': 'The {exam} tab has no rooms. Add rooms in its exam rooms board.',
+  'ta.stale': 'The settings changed since this TA schedule was made. Press “Generate TA schedule” to update it.',
+  'ta.shortage': '{time}: {n} TA place(s) not filled ({room}).', 'ta.lostOff': '{n} TAs had to work on a day the website had given them off, because there were not enough TAs.',
+  'ta.sNeeded': 'TA places needed', 'ta.sFilled': 'places filled', 'ta.sMissing': 'places with no TA', 'ta.sTAs': 'TAs', 'ta.sRange': 'exam times per TA (min–max)',
+  'ta.byTime': 'By exam time', 'ta.perTA': 'Each TA', 'ta.filterPh': 'Find a TA…',
+  'ta.thTimes': 'Exam times', 'ta.thTarget': 'Target', 'ta.thDaysOff': 'Days off', 'ta.thDuty': 'Duties',
+  'ta.req': 'requested', 'ta.missing': 'MISSING',
+  'ta.dlAll': 'Everything (one Excel file)', 'ta.dlSchedule': 'TA schedule by room', 'ta.dlPerTA': 'Duties per TA', 'ta.dlOff': 'TA days off',
+  'x.TA': 'TA', 'x.Times': 'Exam times', 'x.Target': 'Target', 'x.DaysOff': 'Days off', 'x.Duties': 'Duties', 'x.Type': 'Type', 'x.Requested': 'Requested', 'x.Given': 'Given by the website', 'x.Note': 'Note',
+  'sh.taSchedule': 'TA Schedule', 'sh.taPer': 'Duties Per TA', 'sh.taOff': 'TA Days Off'
+});
+Object.assign(window.I18N.ar, {
+  'tab.ta': 'المعيدين',
+  'sec.taList': 'المعيدين', 'sec.taRules': 'قواعد المراقبة', 'sec.taOff': 'طلبات الإجازة', 'sec.taResult': 'جدول المراقبة',
+  'ta.listHint': 'ارفع ملف إكسل/CSV بأسماء المعيدين (عمود «Name» أو «الاسم»، أو العمود الأول)، أو الصق الأسماء اسماً في كل سطر. اترك أرقام المعيد فارغة لاستخدام القواعد بالأسفل.',
+  'ta.upload': 'رفع أسماء المعيدين', 'ta.addOne': '+ إضافة معيد', 'ta.pasteSummary': 'لصق الأسماء', 'ta.pastePh': 'اسم في كل سطر',
+  'ta.pasteAdd': 'إضافة للقائمة', 'ta.pasteReplace': 'استبدال القائمة',
+  'ta.thName': 'اسم المعيد', 'ta.thOff': 'أيام الإجازة', 'ta.thDuties': 'عدد مرات المراقبة', 'ta.thNote': 'ملاحظة', 'ta.thRoomTAs': 'عدد المعيدين في القاعة',
+  'ta.added': 'تمت إضافة {n} معيد.', 'ta.count': '{n} معيد في القائمة.', 'ta.none': 'لا يوجد معيدين بعد. ارفع ملفاً أو الصق الأسماء.', 'ta.namePh': 'اسم المعيد',
+  'ta.examT': 'أي امتحان', 'ta.examD': 'جدول المعيدين يستخدم جدول وتوزيع قاعات هذا الامتحان.',
+  'ta.perRoomT': 'عدد المعيدين في كل قاعة', 'ta.perRoomD': 'يُستخدم لكل القاعات إلا القاعة التي لها رقم خاص بالأسفل.',
+  'ta.offT': 'أيام الإجازة لكل معيد', 'ta.offD': 'من أصل {n} يوم امتحانات. طلبات الإجازة تُحسب منها، والموقع يختار الباقي.',
+  'ta.dutiesT': 'عدد مرات المراقبة لكل معيد', 'ta.dutiesD': 'اتركه فارغاً لتوزيع العمل بالتساوي (حوالي {n} لكل معيد حالياً).', 'ta.auto': 'تلقائي',
+  'ta.roomsSummary': 'عدد المعيدين لكل قاعة', 'ta.roomsHint': 'اتركه فارغاً لاستخدام «عدد المعيدين في كل قاعة». هذه القاعات من لوحة القاعات للامتحان المختار.',
+  'ta.offHint': 'أيام لا يستطيع المعيد الحضور فيها (ظروف طارئة). تُحترم دائماً وتُحسب من أيام إجازته.',
+  'ta.addReq': '+ إضافة يوم إجازة', 'ta.pickTA': '— اختر معيداً —', 'ta.notePh': 'اختياري',
+  'ta.run': 'إنشاء جدول المعيدين', 'ta.again': 'جرّب توزيعاً آخر', 'ta.done': 'تم.',
+  'ta.errNoSchedule': 'أنشئ جدول {exam} أولاً (من تبويب {exam}).', 'ta.errNoTAs': 'أضف أسماء المعيدين أولاً.', 'ta.errNoRooms': 'تبويب {exam} ليس به قاعات. أضف القاعات من لوحة القاعات.',
+  'ta.stale': 'تغيّرت الإعدادات بعد إنشاء جدول المعيدين. اضغط «إنشاء جدول المعيدين» لتحديثه.',
+  'ta.shortage': '{time}: {n} مكان بدون معيد ({room}).', 'ta.lostOff': '{n} معيد اضطروا للعمل في يوم أعطاه الموقع لهم إجازة، لأن عدد المعيدين غير كافٍ.',
+  'ta.sNeeded': 'أماكن مراقبة مطلوبة', 'ta.sFilled': 'مكان تم شغله', 'ta.sMissing': 'مكان بدون معيد', 'ta.sTAs': 'معيد', 'ta.sRange': 'مرات المراقبة لكل معيد (أقل–أكثر)',
+  'ta.byTime': 'حسب موعد الامتحان', 'ta.perTA': 'كل معيد', 'ta.filterPh': 'ابحث عن معيد…',
+  'ta.thTimes': 'مرات المراقبة', 'ta.thTarget': 'المطلوب', 'ta.thDaysOff': 'أيام الإجازة', 'ta.thDuty': 'المراقبات',
+  'ta.req': 'مطلوبة', 'ta.missing': 'ناقص',
+  'ta.dlAll': 'الكل (ملف إكسل واحد)', 'ta.dlSchedule': 'جدول المعيدين حسب القاعة', 'ta.dlPerTA': 'مراقبات كل معيد', 'ta.dlOff': 'إجازات المعيدين',
+  'x.TA': 'المعيد', 'x.Times': 'مرات المراقبة', 'x.Target': 'المطلوب', 'x.DaysOff': 'أيام الإجازة', 'x.Duties': 'المراقبات', 'x.Type': 'النوع', 'x.Requested': 'مطلوبة', 'x.Given': 'من الموقع', 'x.Note': 'ملاحظة',
+  'sh.taSchedule': 'جدول المعيدين', 'sh.taPer': 'مراقبات كل معيد', 'sh.taOff': 'إجازات المعيدين'
+});
+
+/* TA tab: matrix, posts, request kinds */
+Object.assign(window.I18N.en, {
+  'ta.listHint': 'Upload the TA names: a Word file like your invigilation sheet (names in the last column), an Excel/CSV file (a "Name" column, or the first column), or paste names one per line. Leave a TA’s own numbers empty to use the rules below.',
+  'ta.postsT': 'Extra posts at every exam time', 'ta.postsD': 'Places that need a TA whenever there is an exam, besides the rooms (e.g. F3 FLOOR). One per line.',
+  'ta.spreadT': 'Exam times per TA in one day', 'ta.spread1': 'One per day when possible', 'ta.spread2': 'Group on fewer days', 'ta.spreadD': 'One per day spreads the work; grouping means TAs come in on fewer days.',
+  'ta.thTime': 'Exam time', 'ta.thKind': 'Reason', 'ta.allDay': 'All day', 'ta.kindOff': 'Day off', 'ta.kindExam': 'Own exam',
+  'ta.offHint': 'A whole day a TA cannot come (counts as one of their days off), or one exam time they cannot attend, for example their own exam.',
+  'ta.cellOff': 'أجازه', 'ta.cellExam': 'امتحان', 'ta.matrix': 'TA timetable', 'ta.matrixHint': 'Room or post for each TA at each exam time. أجازه = day off, امتحان = own exam.',
+  'ta.week': 'Σ week {n}', 'ta.total': 'Σ', 'ta.dlMatrix': 'TA timetable (like your sheet)', 'ta.dlByRoom': 'TA schedule by room',
+  'sh.taMatrix': 'TA Timetable', 'x.Post': 'Room / post', 'ta.filesRead': 'Read {n} names from {file}.', 'ta.fileNoNames': 'No names found in {file}.'
+});
+Object.assign(window.I18N.ar, {
+  'ta.listHint': 'ارفع أسماء المعيدين: ملف وورد مثل كشف المراقبات (الأسماء في آخر عمود)، أو ملف إكسل/CSV (عمود «Name» أو «الاسم»، أو العمود الأول)، أو الصق الأسماء اسماً في كل سطر. اترك أرقام المعيد فارغة لاستخدام القواعد بالأسفل.',
+  'ta.postsT': 'أماكن إضافية في كل موعد', 'ta.postsD': 'أماكن تحتاج معيداً في كل موعد امتحان غير القاعات (مثل F3 FLOOR). مكان في كل سطر.',
+  'ta.spreadT': 'عدد المراقبات للمعيد في اليوم', 'ta.spread1': 'مراقبة واحدة في اليوم إن أمكن', 'ta.spread2': 'تجميعها في أيام أقل', 'ta.spreadD': 'مراقبة واحدة في اليوم توزّع العمل؛ والتجميع يقلل أيام حضور المعيد.',
+  'ta.thTime': 'الموعد', 'ta.thKind': 'السبب', 'ta.allDay': 'اليوم كله', 'ta.kindOff': 'أجازه', 'ta.kindExam': 'امتحان',
+  'ta.offHint': 'يوم كامل لا يستطيع المعيد الحضور فيه (يُحسب من أيام إجازته)، أو موعد واحد لا يستطيع حضوره، مثل امتحانه هو.',
+  'ta.cellOff': 'أجازه', 'ta.cellExam': 'امتحان', 'ta.matrix': 'جدول المعيدين', 'ta.matrixHint': 'القاعة أو المكان لكل معيد في كل موعد. أجازه = يوم إجازة، امتحان = امتحان المعيد.',
+  'ta.week': 'Σ أسبوع {n}', 'ta.total': 'Σ', 'ta.dlMatrix': 'جدول المعيدين (مثل الكشف)', 'ta.dlByRoom': 'جدول المعيدين حسب القاعة',
+  'sh.taMatrix': 'جدول المعيدين', 'x.Post': 'القاعة / المكان', 'ta.filesRead': 'تمت قراءة {n} اسم من {file}.', 'ta.fileNoNames': 'لم يتم العثور على أسماء في {file}.'
+});
