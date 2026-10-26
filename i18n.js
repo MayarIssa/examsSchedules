@@ -299,3 +299,25 @@ Object.assign(window.I18N.ar, {
   'ta.week': 'Σ أسبوع {n}', 'ta.total': 'Σ', 'ta.dlMatrix': 'جدول المعيدين (مثل الكشف)', 'ta.dlByRoom': 'جدول المعيدين حسب القاعة',
   'sh.taMatrix': 'جدول المعيدين', 'x.Post': 'القاعة / المكان', 'ta.filesRead': 'تمت قراءة {n} اسم من {file}.', 'ta.fileNoNames': 'لم يتم العثور على أسماء في {file}.'
 });
+
+/* TA tab: editing places by hand */
+Object.assign(window.I18N.en, {
+  'ta.fix': 'Fix', 'ta.undo': 'Undo last change', 'ta.fixHint': 'Click any room, MISSING place or timetable cell to change who covers it.',
+  'ta.editedNote': 'This TA schedule has changes made by hand. “Generate TA schedule” starts again from the rules.',
+  'ta.now': 'Now: {name}', 'ta.nowEmpty': 'Now: nobody', 'ta.choose': '— choose who covers this place —',
+  'ta.gFree': 'Free at this time', 'ta.gDayOff': 'On a day off given by the website', 'ta.gBusy': 'In another room at this time (swap)', 'ta.gReq': 'Requested day off / own exam (override)',
+  'ta.stFree': 'free', 'ta.stFreeToday': 'free (already has {n} that day)', 'ta.stDayOff': 'loses a day off', 'ta.stBusy': 'swap with {post}', 'ta.stMove': 'move here ({post} becomes empty)', 'ta.stReq': 'requested day off', 'ta.stExam': 'own exam',
+  'ta.best': 'Suggested: {name} ({why}).',
+  'ta.noFree': 'No TA is free at this time. You can: type another person’s name, override a request below, give this room fewer TAs in the rules, or add more TAs.',
+  'ta.other': '✎ Someone else (type a name)…', 'ta.otherPh': 'Name', 'ta.empty': 'Leave this place empty', 'ta.apply': 'Apply', 'ta.close': 'Close'
+});
+Object.assign(window.I18N.ar, {
+  'ta.fix': 'حل', 'ta.undo': 'تراجع عن آخر تغيير', 'ta.fixHint': 'اضغط على أي قاعة أو مكان ناقص أو خانة في الجدول لتغيير المعيد.',
+  'ta.editedNote': 'جدول المعيدين به تعديلات يدوية. «إنشاء جدول المعيدين» يبدأ من جديد حسب القواعد.',
+  'ta.now': 'الحالي: {name}', 'ta.nowEmpty': 'الحالي: لا أحد', 'ta.choose': '— اختر من يغطي هذا المكان —',
+  'ta.gFree': 'متاح في هذا الموعد', 'ta.gDayOff': 'في يوم إجازة أعطاه الموقع', 'ta.gBusy': 'في قاعة أخرى في نفس الموعد (تبديل)', 'ta.gReq': 'طلب إجازة / امتحان (تجاوز)',
+  'ta.stFree': 'متاح', 'ta.stFreeToday': 'متاح (لديه {n} في نفس اليوم)', 'ta.stDayOff': 'يخسر يوم إجازة', 'ta.stBusy': 'تبديل مع {post}', 'ta.stMove': 'نقله هنا ({post} تصبح فارغة)', 'ta.stReq': 'طلب إجازة', 'ta.stExam': 'لديه امتحان',
+  'ta.best': 'المقترح: {name} ({why}).',
+  'ta.noFree': 'لا يوجد معيد متاح في هذا الموعد. يمكنك: كتابة اسم شخص آخر، أو تجاوز طلب إجازة بالأسفل، أو تقليل عدد المعيدين لهذه القاعة في القواعد، أو إضافة معيدين.',
+  'ta.other': '✎ شخص آخر (اكتب الاسم)…', 'ta.otherPh': 'الاسم', 'ta.empty': 'اترك هذا المكان فارغاً', 'ta.apply': 'تطبيق', 'ta.close': 'إغلاق'
+});

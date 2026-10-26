@@ -173,3 +173,12 @@ table.matrix .mx-on { background: var(--ok-soft); color: var(--ink); }
 table.matrix .mx-off { background: var(--chip); color: var(--muted); }
 table.matrix .mx-exam { background: var(--warn-soft); color: var(--warn); }
 table.matrix .mx-sum { font-variant-numeric: tabular-nums; background: var(--chip); }
+
+/* editing TA places */
+button.room.seat { border: 1px solid transparent; font: inherit; font-size: 12px; color: var(--ink); cursor: pointer; }
+button.room.seat:hover, button.room.seat:focus-visible { border-color: var(--brand); outline: none; }
+button.room.seat.bad-room { color: var(--bad); }
+table.matrix td.mx-cell { cursor: pointer; }
+table.matrix td.mx-cell:hover { outline: 2px solid var(--brand); outline-offset: -2px; }
+.ta-editor { border: 2px solid var(--brand); border-radius: 10px; padding: 10px 12px; margin: 8px 0; background: var(--card); display: flex; flex-direction: column; gap: 6px; }
+.ta-editor select { max-width: 100%; }
