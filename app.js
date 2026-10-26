@@ -1137,6 +1137,12 @@
       const req = new Map(p.offReq), slotB = new Map(p.slotBlocks), off = new Set(p.offAuto);
       while (need > 0) {
         const mine = new Set(res.assign.filter(a => a.uid === x.uid).map(a => a.g));
+        // first choice: a missing place this TA can cover
+        const gap = res.shortages.find(z => z.n > 0 && !mine.has(z.g) && !slotB.has(z.g) && !req.has(Math.floor(z.g / S)) && !off.has(Math.floor(z.g / S)));
+        if (gap) {
+          res.assign.push({ g: gap.g, d: gap.d, s: gap.s, post: gap.post, courses: [], uid: x.uid });
+          gap.n--; need--; continue;
+        }
         let best = null, bestKey = null;
         for (const g of times) {
           const d = Math.floor(g / S);
@@ -1153,6 +1159,7 @@
       p.duties = count(x.uid);
       if (p.duties < want) res.unequal.push({ uid: x.uid, have: p.duties, want });
     }
+    res.shortages = res.shortages.filter(z => z.n > 0);
     res.reserves = res.assign.filter(a => a.reserve).length;
   }
 
@@ -1275,7 +1282,7 @@
       if (!seats.length && !short.length) return;
       html += `<div class="room-cell" data-g="${g}"><div class="room-head"><b>${esc(wdName(d.date))} ${fmtDate(d.date)}</b> · <span dir="ltr">${esc(sl)}</span></div><div class="room-list">` +
         seats.filter(([a]) => !a.reserve).map(([a, i]) => `<button type="button" class="room seat" data-ai="${i}"><b>${esc(a.post)}</b> ${esc(taName(a.uid))}</button>`).join('') +
-        (seats.some(([a]) => a.reserve) ? `<span class="room reserve"><b>${esc(t('ta.reserve'))}</b> ${seats.filter(([a]) => a.reserve).map(([a]) => esc(taName(a.uid))).join('، ')}</span>` : '') +
+        (seats.some(([a]) => a.reserve) ? `<span class="room reserve" title="${esc(t('ta.reserveTip'))}"><b>${esc(t('ta.reserve'))}</b> ${seats.filter(([a]) => a.reserve).map(([a]) => esc(taName(a.uid))).join('، ')}</span>` : '') +
         short.map(([z, i]) => `<button type="button" class="room seat bad-room" data-si="${i}"><b>${esc(z.post)}</b> ${esc(t('ta.missing'))} ×${z.n}</button>`).join('') + '</div></div>';
     }));
     $('taPlan').innerHTML = html;
@@ -1290,18 +1297,26 @@
   function taCandidates(res, g, currentUid, emptySeat) {
     const S = res.slots.length, d = Math.floor(g / S);
     const busy = new Map(res.assign.filter(a => a.g === g && !a.reserve).map(a => [a.uid, a.post]));
+    const onReserve = new Set(res.assign.filter(a => a.g === g && a.reserve).map(a => a.uid));
+    const inPost = {};
+    res.assign.filter(a => a.g === g && !a.reserve).forEach(a => (inPost[a.post] = (inPost[a.post] || 0) + 1));
     const out = [];
     for (const x of taList()) {
       if (x.uid === currentUid) continue;
       const p = res.per[x.uid] || { offReq: [], offAuto: [], slotBlocks: [], duties: 0, target: 0 };
       const req = new Map(p.offReq), slotB = new Map(p.slotBlocks);
       const today = res.assign.filter(a => a.uid === x.uid && a.d === d).length;
-      let group, why;
+      let group, why, sub = 0, keeps = 0;
       if (slotB.has(g) || req.has(d)) { group = 3; why = (slotB.get(g) || req.get(d)) === 'exam' ? t('ta.stExam') : t('ta.stReq'); }
-      else if (busy.has(x.uid)) { group = 2; why = t(emptySeat ? 'ta.stMove' : 'ta.stBusy', { post: busy.get(x.uid) }); }
+      else if (busy.has(x.uid)) {
+        group = 2; const post = busy.get(x.uid);
+        if (emptySeat) { keeps = inPost[post] - 1; sub = keeps > 0 ? 0 : 1; why = keeps > 0 ? t('ta.stMoveKeep', { post, n: keeps }) : t('ta.stMove', { post }); }
+        else why = t('ta.stBusy', { post });
+      }
       else if (p.offAuto.includes(d)) { group = 1; why = t('ta.stDayOff'); }
+      else if (onReserve.has(x.uid)) { group = 0; sub = -1; why = t('ta.stReserve'); }
       else { group = 0; why = today ? t('ta.stFreeToday', { n: today }) : t('ta.stFree'); }
-      out.push({ uid: x.uid, name: x.name, group, why, sortKey: [group, (p.duties || 0) - (p.target || 0), today] });
+      out.push({ uid: x.uid, name: x.name, group, why, keeps, sortKey: [group, sub, (p.duties || 0) - (p.target || 0), today] });
     }
     return out.sort((a, b) => cmpKey(a.sortKey, b.sortKey));
   }
@@ -1317,7 +1332,7 @@
       const list = cands.filter(c => c.group === gi);
       return list.length ? `<optgroup label="${esc(t(k))}">${list.map(c => `<option value="${esc(c.uid)}" ${seat.pre === c.uid ? 'selected' : ''}>${esc(c.name)} — ${esc(c.why)}</option>`).join('')}</optgroup>` : '';
     }).join('');
-    const best = cands.find(c => c.group < 2 || (a && c.group === 2));
+    const best = cands.find(c => c.group < 2 || (c.group === 2 && (a || c.keeps > 0)));
     const advice = !best ? t('ta.noFree') : t('ta.best', { name: best.name, why: best.why });
     let box = $('taEditor');
     if (!box) { box = document.createElement('div'); box.id = 'taEditor'; box.className = 'ta-editor'; }

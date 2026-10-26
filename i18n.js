@@ -337,3 +337,15 @@ Object.assign(window.I18N.ar, {
   'ta.matrixHint': 'القاعة أو المكان لكل معيد في كل موعد. أجازه = يوم إجازة، امتحان = امتحان المعيد، احتياطي = مراقبة احتياطية ليتساوى الجميع.',
   'ta.sRange': 'مرات المراقبة لكل معيد'
 });
+
+/* TA tab: reserve explanation and move wording */
+Object.assign(window.I18N.en, {
+  'ta.stMoveKeep': 'move here ({post} keeps {n} TA, no room left empty)', 'ta.stReserve': 'free (on reserve at this time)',
+  'ta.reserveTip': 'Reserve: a standby TA at this exam time with no fixed room. They cover an absent TA or help where needed, and keep everyone’s number of exam times equal.',
+  'ta.matrixHint': 'Room or post for each TA at each exam time. أجازه = day off, امتحان = own exam, Reserve = standby TA with no fixed room who covers absences and helps where needed (added so everyone has the same number of exam times).'
+});
+Object.assign(window.I18N.ar, {
+  'ta.stMoveKeep': 'نقله هنا (تبقى {post} بـ {n} معيد، ولا تبقى قاعة فارغة)', 'ta.stReserve': 'متاح (احتياطي في هذا الموعد)',
+  'ta.reserveTip': 'احتياطي: معيد موجود في موعد الامتحان بدون قاعة محددة، يغطي غياب أي معيد أو يساعد عند الحاجة، ويجعل عدد المراقبات متساوياً للجميع.',
+  'ta.matrixHint': 'القاعة أو المكان لكل معيد في كل موعد. أجازه = يوم إجازة، امتحان = امتحان المعيد، احتياطي = معيد بدون قاعة محددة يغطي الغياب ويساعد عند الحاجة (يُضاف ليتساوى عدد المراقبات للجميع).'
+});
