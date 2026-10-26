@@ -24,10 +24,11 @@
   </nav>
 </header>
 
-<main>
+<main id="main">
+  <p class="hint reorder-hint">Use ▲ ▼ next to a section title to change the order of sections.</p>
   <!-- 1. Enrollment -->
-  <section class="card">
-    <h2><span class="num">1</span> Student enrollments <small>ملف تسجيلات الطلاب</small></h2>
+  <section class="card sec" data-sec="enroll">
+    <h2><span class="num"></span> Student enrollments <small>ملف تسجيلات الطلاب</small></h2>
     <p class="hint">Upload the Excel file (one row per student per course). Shared by midterm and final.</p>
     <div class="row">
       <label class="file-btn">Choose Excel file<input type="file" id="enrFile" accept=".xlsx,.xls,.csv"></label>
@@ -37,8 +38,8 @@
   </section>
 
   <!-- Courses not in the file -->
-  <section class="card">
-    <h2><span class="num">+</span> Courses not in the file <small>مواد مش موجودة في الملف</small></h2>
+  <section class="card sec" data-sec="extra">
+    <h2><span class="num"></span> Courses not in the file <small>مواد مش موجودة في الملف</small></h2>
     <p class="hint">Add any course that is missing from the Excel file. Student IDs are optional; without them the course has 0 students and only takes a place in the timetable. Shared by midterm and final.</p>
     <div class="scroll"><table class="tbl" id="extraTbl">
       <thead><tr><th>Course code</th><th>Course name</th><th>Student IDs</th><th></th></tr></thead>
@@ -48,15 +49,16 @@
   </section>
 
   <!-- Exam rooms -->
-  <section class="card">
-    <h2><span class="num">R</span> Exam rooms <small>القاعات</small></h2>
-    <p class="hint">All rooms together set how many students can sit an exam at the same time. Shared by midterm and final. Edit any room below.</p>
+  <section class="card sec" data-sec="rooms">
+    <h2><span class="num"></span> Exam rooms <small>القاعات</small></h2>
+    <p class="hint">All rooms together set how many students can sit an exam at the same time. <b id="roomsFor"></b> has its own rooms; edit any room below.</p>
     <div class="row wrap">
       <label class="inline">Rooms<input type="number" id="roomCount" min="0" max="500" value="30"></label>
       <label class="inline">Seats per room<input type="number" id="roomSeats" min="1" value="25"></label>
       <button id="makeRooms" class="btn">Set rooms</button>
       <button id="allSeats" class="btn small">Apply seats to all rooms</button>
       <button id="addRoom" class="btn small">+ Add one room</button>
+      <button id="copyRooms" class="btn small"></button>
     </div>
     <div id="roomTotal"></div>
     <details class="adv"><summary>Edit rooms one by one</summary>
@@ -67,8 +69,8 @@
   </section>
 
   <!-- 2. Exam period -->
-  <section class="card">
-    <h2><span class="num">2</span> Exam period &amp; times <small>الأيام والمواعيد</small></h2>
+  <section class="card sec" data-sec="period">
+    <h2><span class="num"></span> Exam period &amp; times <small>الأيام والمواعيد</small></h2>
     <div class="grid2">
       <label>First day<input type="date" id="start"></label>
       <label>Last day<input type="date" id="end"></label>
@@ -86,8 +88,8 @@
   </section>
 
   <!-- 3. Fixed exams -->
-  <section class="card">
-    <h2><span class="num">3</span> Fixed exams <small>المواد الثابتة (مواعيدها بتتحدد من برة)</small></h2>
+  <section class="card sec" data-sec="fixed">
+    <h2><span class="num"></span> Fixed exams <small>المواد الثابتة (مواعيدها بتتحدد من برة)</small></h2>
     <p class="hint">These courses keep exactly this day and time. Everything else is scheduled around them.</p>
     <div class="scroll"><table class="tbl" id="fixedTbl">
       <thead><tr><th>Course code</th><th>Course</th><th>Students</th><th>Day</th><th>Time</th><th></th></tr></thead>
@@ -106,30 +108,48 @@
   </section>
 
   <!-- 4. Rules -->
-  <section class="card">
-    <h2><span class="num">4</span> Rules <small>القواعد</small></h2>
-    <div class="grid3">
-      <div class="field" style="margin:0"><span class="lbl">Seats per exam time</span><span id="seatInfo"></span></div>
-      <label>Max exams per student per day <span class="muted">never exceeded</span><input type="number" id="maxPerDay" min="1" max="8"></label>
-      <label>Spread exams to avoid back-to-back days <span class="muted">weight, 0 = off</span><input type="number" id="adjPen" min="0"></label>
-    </div>
-    <div class="field">
-      <span class="lbl">How much to avoid a student having N exams on one day <span class="muted">(higher = avoid harder)</span></span>
-      <div class="grid3">
-        <label>2 exams<input type="number" id="pen2" min="0"></label>
-        <label>3 exams<input type="number" id="pen3" min="0"></label>
-        <label>4 exams<input type="number" id="pen4" min="0"></label>
+  <section class="card sec" data-sec="rules">
+    <h2><span class="num"></span> Rules <small>القواعد</small></h2>
+    <p class="hint">How the website decides where to put each exam. Change a rule only if you want a different balance.</p>
+    <div class="rules">
+      <div class="rule">
+        <div><b>Seats per exam time</b><span class="muted">How many students can sit an exam at the same time. Comes from the exam rooms board.<br>عدد المقاعد المتاحة في نفس الموعد (من القاعات)</span></div>
+        <div id="seatInfo" class="rule-val"></div>
+      </div>
+      <div class="rule">
+        <div><b>Most exams one student can have in one day</b><span class="muted">The website will never go above this.<br>أقصى عدد امتحانات للطالب في اليوم</span></div>
+        <select id="maxPerDay"><option value="1">1 exam</option><option value="2">2 exams</option><option value="3">3 exams</option><option value="4">4 exams</option><option value="5">5 exams</option></select>
+      </div>
+      <div class="rule" data-n="2">
+        <div><b>A student with 2 exams in one day</b><span class="muted">طالب عنده امتحانين في نفس اليوم</span></div>
+        <select id="pen2" class="lvl"></select>
+      </div>
+      <div class="rule" data-n="3">
+        <div><b>A student with 3 exams in one day</b><span class="muted">طالب عنده ٣ امتحانات في نفس اليوم (في أضيق الحدود)</span></div>
+        <select id="pen3" class="lvl"></select>
+      </div>
+      <div class="rule" data-n="4">
+        <div><b>A student with 4 exams in one day</b><span class="muted">طالب عنده ٤ امتحانات في نفس اليوم (في أضيق أضيق الحدود)</span></div>
+        <select id="pen4" class="lvl"></select>
+      </div>
+      <div class="rule">
+        <div><b>Exams on two days in a row</b><span class="muted">A student with exams on back-to-back days (e.g. Sunday then Monday).<br>امتحانات في يومين ورا بعض</span></div>
+        <select id="adjPen"><option value="0">Allowed</option><option value="3">Avoid a little</option><option value="20">Avoid</option><option value="50">Avoid strongly</option></select>
+      </div>
+      <div class="rule">
+        <div><b>Extra days</b><span class="muted">When to use the extra days from “Exam period” (e.g. the next Saturday).<br>استخدام الأيام الإضافية</span></div>
+        <select id="extraPen"><option value="0">Use freely</option><option value="20">Use if it helps</option><option value="100">Only if really needed</option></select>
+      </div>
+      <div class="rule">
+        <div><b>Courses with no exam</b><span class="muted">Course codes to leave out, separated by commas.<br>مواد مالهاش امتحان</span></div>
+        <input type="text" id="excluded" placeholder="e.g. GRAD499">
       </div>
     </div>
-    <div class="grid2">
-      <label>Cost of using an extra day <span class="muted">per student</span><input type="number" id="extraPen" min="0"></label>
-      <label>Courses with no exam <span class="muted">codes, comma separated</span><input type="text" id="excluded" placeholder="e.g. GRAD499"></label>
-    </div>
-    <details class="adv"><summary>Advanced</summary>
+    <details class="adv"><summary>Advanced (you don't need to change these)</summary>
       <div class="grid3">
-        <label>Search effort (iterations)<input type="number" id="iterations" min="10000" step="10000"></label>
-        <label>Attempts (best kept)<input type="number" id="restarts" min="1" max="10"></label>
-        <label>Balance slot sizes (weight)<input type="number" id="balance" min="0" step="0.01"></label>
+        <label>Search effort <span class="muted">Higher = better result but slower.</span><input type="number" id="iterations" min="10000" step="10000"></label>
+        <label>Attempts <span class="muted">Runs this many times and keeps the best.</span><input type="number" id="restarts" min="1" max="10"></label>
+        <label>Even out exam times <span class="muted">Spreads students evenly across times. 0 = off.</span><input type="number" id="balance" min="0" step="0.01"></label>
       </div>
     </details>
     <div class="row wrap actions">
@@ -141,12 +161,23 @@
   </section>
 
   <!-- 5. Results -->
-  <section class="card hidden" id="results">
-    <h2><span class="num">5</span> Schedule <small>الجدول</small></h2>
+  <section class="card sec hidden" data-sec="results" id="results">
+    <h2><span class="num"></span> Schedule <small>الجدول</small></h2>
     <div class="row wrap">
-      <button id="exportXlsx" class="btn primary">Download Excel</button>
       <button id="printBtn" class="btn">Print</button>
       <span id="genAt" class="muted"></span>
+    </div>
+    <div class="downloads">
+      <span class="lbl">Download</span>
+      <div class="row wrap">
+        <button class="btn primary" data-dl="all">Everything (one Excel file)</button>
+        <button class="btn" data-dl="detailed">Detailed schedule</button>
+        <button class="btn" data-dl="student">Student exam timetable</button>
+        <button class="btn" data-dl="byday">Courses by day</button>
+        <button class="btn" data-dl="heavy" id="dlHeavy">Students with heavy days</button>
+        <button class="btn" data-dl="rooms">Room plan</button>
+      </div>
+      <span id="dlMsg" class="muted"></span>
     </div>
     <div id="summary" class="stats"></div>
     <div class="scroll"><table class="grid" id="gridTbl"></table></div>
@@ -171,6 +202,7 @@
       <button id="exportCfg" class="btn small">Save settings to file</button>
       <label class="file-btn small">Load settings file<input type="file" id="importCfg" accept=".json"></label>
       <button id="resetCfg" class="btn small danger">Reset this tab to defaults</button>
+      <button id="resetOrder" class="btn small">Reset section order</button>
       <span class="muted">Settings and fixed exams are saved automatically in this browser.</span>
       <span id="cfgMsg"></span>
     </div>

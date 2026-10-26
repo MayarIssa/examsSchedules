@@ -100,7 +100,7 @@ table.grid td.extra { outline: 2px dashed var(--warn-soft); }
 .badge.b2 { background: var(--chip); } .badge.b3 { background: var(--warn-soft); color: var(--warn); } .badge.b4 { background: var(--bad-soft); color: var(--bad); }
 .student-card { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin: 8px 0; }
 @media print {
-  .top, .card:not(#results), #exportXlsx, #printBtn, #courseFilter, #studentSearch, #studentOut, #courseTbl, h3 { display: none !important; }
+  .top, .card:not(#results), .downloads, .mover, .reorder-hint, #printBtn, #courseFilter, #studentSearch, #studentOut, #courseTbl, h3 { display: none !important; }
   body { background: var(--card); }
   .card { border: 0; }
 }
@@ -115,3 +115,15 @@ label.inline input { width: 80px; }
 .room-list { display: flex; flex-wrap: wrap; gap: 4px; }
 .room { background: var(--chip); border-radius: 6px; padding: 2px 8px; font-size: 12px; }
 .room small { color: var(--muted); }
+
+.rules { display: flex; flex-direction: column; }
+.rule { display: grid; grid-template-columns: minmax(0, 1fr) minmax(170px, 260px); gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.rule > div:first-child { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.rule-val { font-weight: 600; }
+@media (max-width: 600px) { .rule { grid-template-columns: 1fr; gap: 6px; } }
+.mover { margin-left: auto; display: inline-flex; gap: 2px; }
+.mover .icon-btn { font-size: 13px; padding: 4px 6px; border-radius: 6px; }
+.mover .icon-btn:hover { color: var(--brand); background: var(--chip); }
+.mover .icon-btn:disabled { opacity: .25; cursor: default; }
+.reorder-hint { margin: 0 0 10px; }
+.downloads { display: flex; flex-direction: column; gap: 4px; margin: 10px 0; }
