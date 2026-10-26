@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NMU Exam Scheduler</title>
+<link rel="stylesheet" href="style.css">
+<script src="vendor/xlsx.full.min.js"></script>
+<script src="solver.js"></script>
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <div class="logo">NMU</div>
+    <div>
+      <h1>Exam Scheduler</h1>
+      <p class="sub">Midterm &amp; final timetables from student enrollments · جدولة الامتحانات</p>
+    </div>
+  </div>
+  <nav class="tabs" id="tabs">
+    <button data-mode="midterm" class="active">Midterm · الميد</button>
+    <button data-mode="final">Final · الفاينال</button>
+  </nav>
+</header>
+
+<main>
+  <!-- 1. Enrollment -->
+  <section class="card">
+    <h2><span class="num">1</span> Student enrollments <small>ملف تسجيلات الطلاب</small></h2>
+    <p class="hint">Upload the Excel file (one row per student per course). Shared by midterm and final.</p>
+    <div class="row">
+      <label class="file-btn">Choose Excel file<input type="file" id="enrFile" accept=".xlsx,.xls,.csv"></label>
+      <span id="enrInfo" class="muted">No file loaded.</span>
+    </div>
+    <div id="colMap" class="row wrap hidden"></div>
+  </section>
+
+  <!-- 2. Exam period -->
+  <section class="card">
+    <h2><span class="num">2</span> Exam period &amp; times <small>الأيام والمواعيد</small></h2>
+    <div class="grid2">
+      <label>First day<input type="date" id="start"></label>
+      <label>Last day<input type="date" id="end"></label>
+    </div>
+    <div class="field">
+      <span class="lbl">Exam weekdays</span>
+      <div id="weekdays" class="row wrap"></div>
+    </div>
+    <div class="grid2">
+      <label>Days off (holidays) <span class="muted">one date per line</span><textarea id="holidays" rows="2" placeholder="2027-01-07"></textarea></label>
+      <label>Extra days, used only if they help <span class="muted">one date per line</span><textarea id="extraDays" rows="2" placeholder="2026-11-14"></textarea></label>
+    </div>
+    <label class="field">Exam times (one per line, HH:MM-HH:MM)<textarea id="slots" rows="4"></textarea></label>
+    <div id="dayList" class="daylist"></div>
+  </section>
+
+  <!-- 3. Fixed exams -->
+  <section class="card">
+    <h2><span class="num">3</span> Fixed exams <small>المواد الثابتة (مواعيدها بتتحدد من برة)</small></h2>
+    <p class="hint">These courses keep exactly this day and time. Everything else is scheduled around them.</p>
+    <div class="scroll"><table class="tbl" id="fixedTbl">
+      <thead><tr><th>Course code</th><th>Course</th><th>Students</th><th>Day</th><th>Time</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+    <div class="row wrap">
+      <button id="addFixed" class="btn">+ Add fixed exam</button>
+      <details class="paste">
+        <summary>Paste a list</summary>
+        <p class="hint">One per line: <code>CODE, date, start time</code> — e.g. <code>MEC011, 7/11/2026, 10:00</code> or <code>LAN011 2026-11-08 2:30</code></p>
+        <textarea id="pasteFixed" rows="4"></textarea>
+        <button id="pasteBtn" class="btn small">Add these</button>
+        <span id="pasteMsg" class="muted"></span>
+      </details>
+    </div>
+  </section>
+
+  <!-- 4. Rules -->
+  <section class="card">
+    <h2><span class="num">4</span> Rules <small>القواعد</small></h2>
+    <div class="grid3">
+      <label>Seats per time slot <span class="muted">0 = no limit</span><input type="number" id="capacity" min="0"></label>
+      <label>Max exams per student per day <span class="muted">never exceeded</span><input type="number" id="maxPerDay" min="1" max="8"></label>
+      <label>Spread exams to avoid back-to-back days <span class="muted">weight, 0 = off</span><input type="number" id="adjPen" min="0"></label>
+    </div>
+    <div class="field">
+      <span class="lbl">How much to avoid a student having N exams on one day <span class="muted">(higher = avoid harder)</span></span>
+      <div class="grid3">
+        <label>2 exams<input type="number" id="pen2" min="0"></label>
+        <label>3 exams<input type="number" id="pen3" min="0"></label>
+        <label>4 exams<input type="number" id="pen4" min="0"></label>
+      </div>
+    </div>
+    <div class="grid2">
+      <label>Cost of using an extra day <span class="muted">per student</span><input type="number" id="extraPen" min="0"></label>
+      <label>Courses with no exam <span class="muted">codes, comma separated</span><input type="text" id="excluded" placeholder="e.g. GRAD499"></label>
+    </div>
+    <details class="adv"><summary>Advanced</summary>
+      <div class="grid3">
+        <label>Search effort (iterations)<input type="number" id="iterations" min="10000" step="10000"></label>
+        <label>Attempts (best kept)<input type="number" id="restarts" min="1" max="10"></label>
+        <label>Balance slot sizes (weight)<input type="number" id="balance" min="0" step="0.01"></label>
+      </div>
+    </details>
+    <div class="row wrap actions">
+      <button id="run" class="btn primary">Generate schedule</button>
+      <span id="runMsg" class="muted"></span>
+      <div class="progress hidden" id="progress"><div></div></div>
+    </div>
+    <div id="warnings"></div>
+  </section>
+
+  <!-- 5. Results -->
+  <section class="card hidden" id="results">
+    <h2><span class="num">5</span> Schedule <small>الجدول</small></h2>
+    <div class="row wrap">
+      <button id="exportXlsx" class="btn primary">Download Excel</button>
+      <button id="printBtn" class="btn">Print</button>
+      <span id="genAt" class="muted"></span>
+    </div>
+    <div id="summary" class="stats"></div>
+    <div class="scroll"><table class="grid" id="gridTbl"></table></div>
+
+    <h3>Courses <span class="muted">— change a day/time by hand, or tick 🔒 to make it fixed</span></h3>
+    <div class="row"><input type="search" id="courseFilter" placeholder="Filter courses…"></div>
+    <div class="scroll"><table class="tbl" id="courseTbl"></table></div>
+
+    <h3 id="heavyTitle">Students with heavy days</h3>
+    <div class="scroll short"><table class="tbl" id="heavyTbl"></table></div>
+
+    <h3>Student lookup</h3>
+    <div class="row"><input type="search" id="studentSearch" placeholder="Student ID or name"></div>
+    <div id="studentOut"></div>
+  </section>
+
+  <section class="card muted-card">
+    <div class="row wrap">
+      <button id="exportCfg" class="btn small">Save settings to file</button>
+      <label class="file-btn small">Load settings file<input type="file" id="importCfg" accept=".json"></label>
+      <button id="resetCfg" class="btn small danger">Reset this tab to defaults</button>
+      <span class="muted">Settings and fixed exams are saved automatically in this browser.</span>
+    </div>
+  </section>
+</main>
+<script src="app.js"></script>
+</body>
+</html>
