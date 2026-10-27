@@ -184,3 +184,8 @@ table.matrix td.mx-cell:hover { outline: 2px solid var(--brand); outline-offset:
 .ta-editor select { max-width: 100%; }
 table.matrix .mx-res { background: var(--fixed); color: var(--ink); font-style: italic; }
 .room.reserve { background: var(--fixed); }
+
+.msg-row { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-top: 8px; }
+.msg-row > div { min-width: 0; flex: 1 1 260px; }
+.ta-editor .ed-title { font-weight: 700; font-size: 15px; }
+.ta-editor #taEdEffect:empty { display: none; }

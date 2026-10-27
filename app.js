@@ -1246,10 +1246,10 @@
     if (!state.results[mode]) warn.push(`<div class="warn">${esc(t('ta.errNoSchedule', { exam: examName() }))}</div>`);
     if (!res) { $('taWarn').innerHTML = warn.join(''); return; }
     if (res.sig !== taSignature()) warn.push(`<div class="warn">${esc(t('ta.stale'))}</div>`);
-    const S = res.slots.length, timeLabel = (d, s) => `${wdName(res.days[d].date)} ${fmtDate(res.days[d].date)} ${res.slots[s]}`;
+    const S = res.slots.length, timeLabel = (d, s) => `${wdName(res.days[d].date)} ${fmtDate(res.days[d].date)}, ${res.slots[s]}`;
     const shortBy = {};
-    res.shortages.forEach(z => (shortBy[z.g] = shortBy[z.g] || { d: z.d, s: z.s, n: 0, posts: [] }, shortBy[z.g].n += z.n, shortBy[z.g].posts.push(z.post)));
-    Object.entries(shortBy).forEach(([g, z]) => warn.push(`<div class="err row wrap" style="margin-top:8px">${esc(t('ta.shortage', { time: timeLabel(z.d, z.s), room: z.posts.join(', '), n: z.n }))} <button class="btn small" data-fixg="${g}">${esc(t('ta.fix'))}</button></div>`));
+    res.shortages.forEach(z => (shortBy[z.g] = shortBy[z.g] || { d: z.d, s: z.s, n: 0, posts: [] }, shortBy[z.g].n += z.n, shortBy[z.g].posts.push(z.n > 1 ? `${z.post} ×${z.n}` : z.post)));
+    Object.entries(shortBy).forEach(([g, z]) => warn.push(`<div class="err msg-row"><div><b>${esc(timeLabel(z.d, z.s))}</b> — ${esc(t('ta.shortage', { n: z.n, room: z.posts.join(state.lang === 'ar' ? '، ' : ', ') }))}</div><button class="btn small" data-fixg="${g}">${esc(t('ta.fix'))}</button></div>`));
     (res.unequal || []).forEach(u => warn.push(`<div class="warn">${esc(t('ta.unequal', { name: taName(u.uid), have: u.have, want: u.want }))}</div>`));
     const lost = Object.values(res.per).filter(p => p.lost).length;
     if (lost) warn.push(`<div class="warn">${esc(t('ta.lostOff', { n: lost }))}</div>`);
@@ -1294,31 +1294,39 @@
   const taName = uid => (String(uid).startsWith('ext:') ? uid.slice(4) : ((taById(uid) || {}).name || '?'));
   let taUndo = [], taEditSeat = null;
   // who could cover place at time g, best first
+  // who could cover a place at time g, grouped by what happens if you pick them, best first
+  const CAND_GROUPS = { free: 'ta.gFree', reserve: 'ta.gReserve', moveKeep: 'ta.gMoveKeep', dayOff: 'ta.gDayOff', moveEmpty: 'ta.gMoveEmpty', swap: 'ta.gSwap', req: 'ta.gReq' };
   function taCandidates(res, g, currentUid, emptySeat) {
     const S = res.slots.length, d = Math.floor(g / S);
     const busy = new Map(res.assign.filter(a => a.g === g && !a.reserve).map(a => [a.uid, a.post]));
     const onReserve = new Set(res.assign.filter(a => a.g === g && a.reserve).map(a => a.uid));
     const inPost = {};
     res.assign.filter(a => a.g === g && !a.reserve).forEach(a => (inPost[a.post] = (inPost[a.post] || 0) + 1));
+    const order = emptySeat ? ['free', 'reserve', 'moveKeep', 'dayOff', 'moveEmpty', 'req'] : ['free', 'reserve', 'swap', 'dayOff', 'req'];
     const out = [];
     for (const x of taList()) {
       if (x.uid === currentUid) continue;
       const p = res.per[x.uid] || { offReq: [], offAuto: [], slotBlocks: [], duties: 0, target: 0 };
       const req = new Map(p.offReq), slotB = new Map(p.slotBlocks);
-      const today = res.assign.filter(a => a.uid === x.uid && a.d === d).length;
-      let group, why, sub = 0, keeps = 0;
-      if (slotB.has(g) || req.has(d)) { group = 3; why = (slotB.get(g) || req.get(d)) === 'exam' ? t('ta.stExam') : t('ta.stReq'); }
+      const today = res.assign.filter(a => a.uid === x.uid && a.d === d && !a.reserve).length;
+      let group, label = x.name, post = '', keeps = 0;
+      if (slotB.has(g) || req.has(d)) { group = 'req'; label += ' · ' + t((slotB.get(g) || req.get(d)) === 'exam' ? 'ta.oExam' : 'ta.oReq'); }
       else if (busy.has(x.uid)) {
-        group = 2; const post = busy.get(x.uid);
-        if (emptySeat) { keeps = inPost[post] - 1; sub = keeps > 0 ? 0 : 1; why = keeps > 0 ? t('ta.stMoveKeep', { post, n: keeps }) : t('ta.stMove', { post }); }
-        else why = t('ta.stBusy', { post });
+        post = busy.get(x.uid); keeps = inPost[post] - 1;
+        group = !emptySeat ? 'swap' : keeps > 0 ? 'moveKeep' : 'moveEmpty';
+        label += ' · ' + t(group === 'moveKeep' ? 'ta.oInKeep' : 'ta.oIn', { post, n: keeps });
       }
-      else if (p.offAuto.includes(d)) { group = 1; why = t('ta.stDayOff'); }
-      else if (onReserve.has(x.uid)) { group = 0; sub = -1; why = t('ta.stReserve'); }
-      else { group = 0; why = today ? t('ta.stFreeToday', { n: today }) : t('ta.stFree'); }
-      out.push({ uid: x.uid, name: x.name, group, why, keeps, sortKey: [group, sub, (p.duties || 0) - (p.target || 0), today] });
+      else if (p.offAuto.includes(d)) group = 'dayOff';
+      else if (onReserve.has(x.uid)) group = 'reserve';
+      else { group = 'free'; if (today) label += ' · ' + t('ta.oToday', { n: today }); }
+      out.push({ uid: x.uid, name: x.name, group, label, post, keeps, sortKey: [order.indexOf(group), (p.duties || 0) - (p.target || 0), today] });
     }
-    return out.sort((a, b) => cmpKey(a.sortKey, b.sortKey));
+    return { order, list: out.sort((a, b) => cmpKey(a.sortKey, b.sortKey)) };
+  }
+  function adviceFor(best, dayLabel) {
+    if (!best) return null;
+    const k = { free: 'ta.bFree', reserve: 'ta.bReserve', moveKeep: 'ta.bMoveKeep', dayOff: 'ta.bDayOff', swap: 'ta.bSwap', moveEmpty: 'ta.bMoveEmpty', req: 'ta.bReq' }[best.group];
+    return t(k, { name: best.name, post: best.post, n: best.keeps, day: dayLabel });
   }
   function openTAEditor(seat, anchor, keepPlace) {
     const res = state.ta.result[mode]; if (!res) return;
@@ -1326,31 +1334,40 @@
     if (!a && !(z && z.n > 0)) { closeTAEditor(); return; }
     taEditSeat = seat;
     const g = a ? a.g : z.g, post = a ? a.post : z.post, S = res.slots.length, d = Math.floor(g / S);
-    const cands = taCandidates(res, g, a ? a.uid : null, !a);
-    const groups = ['ta.gFree', 'ta.gDayOff', 'ta.gBusy', 'ta.gReq'];
-    const opts = groups.map((k, gi) => {
-      const list = cands.filter(c => c.group === gi);
-      return list.length ? `<optgroup label="${esc(t(k))}">${list.map(c => `<option value="${esc(c.uid)}" ${seat.pre === c.uid ? 'selected' : ''}>${esc(c.name)} — ${esc(c.why)}</option>`).join('')}</optgroup>` : '';
+    const dayLabel = `${wdName(res.days[d].date)} ${fmtDate(res.days[d].date)}`;
+    const { order, list } = taCandidates(res, g, a ? a.uid : null, !a);
+    const opts = order.map(gk => {
+      const l = list.filter(c => c.group === gk);
+      return l.length ? `<optgroup label="${esc(t(CAND_GROUPS[gk]))}">${l.map(c => `<option value="${esc(c.uid)}" ${seat.pre === c.uid ? 'selected' : ''}>${esc(c.label)}</option>`).join('')}</optgroup>` : '';
     }).join('');
-    const best = cands.find(c => c.group < 2 || (c.group === 2 && (a || c.keeps > 0)));
-    const advice = !best ? t('ta.noFree') : t('ta.best', { name: best.name, why: best.why });
+    // suggest someone only when the choice really helps (never empties another room or breaks a request)
+    const best = list.find(c => ['free', 'reserve', 'moveKeep', 'dayOff'].includes(c.group) || (a && c.group === 'swap'));
+    const advice = adviceFor(best, dayLabel) || t(a ? 'ta.noFreeFilled' : 'ta.noFree');
     let box = $('taEditor');
     if (!box) { box = document.createElement('div'); box.id = 'taEditor'; box.className = 'ta-editor'; }
-    box.innerHTML = `<div class="row wrap"><b>${esc(post)}</b> · ${esc(wdName(res.days[d].date))} ${fmtDate(res.days[d].date)} <span dir="ltr">${esc(res.slots[g % S])}</span>
-        <span class="muted">${esc(a ? t('ta.now', { name: taName(a.uid) }) : t('ta.nowEmpty'))}</span></div>
-      <div class="${!best ? 'warn' : 'ok'}">${esc(advice)}</div>
+    box.innerHTML = `<div class="ed-title">${esc(t('ta.edTitle', { post }))} <span class="muted">${esc(dayLabel)} · <span dir="ltr">${esc(res.slots[g % S])}</span></span></div>
+      <div class="muted">${esc(a ? t('ta.now', { name: taName(a.uid) }) : t('ta.nowEmpty'))}</div>
+      <div class="${best ? 'ok' : 'warn'}">${esc(advice)}</div>
       <div class="row wrap">
-        <select id="taEdSel"><option value="">${esc(t('ta.choose'))}</option>${opts}<option value="__other__">${esc(t('ta.other'))}</option>${a ? `<option value="__empty__">${esc(t('ta.empty'))}</option>` : ''}</select>
+        <select id="taEdSel"><option value="">${esc(t('ta.choose'))}</option>${opts}<optgroup label="${esc(t('ta.gOther'))}"><option value="__other__">${esc(t('ta.other'))}</option>${a ? `<option value="__empty__">${esc(t('ta.empty'))}</option>` : ''}</optgroup></select>
         <input id="taEdOther" placeholder="${esc(t('ta.otherPh'))}" hidden>
         <button class="btn primary small" id="taEdApply">${esc(t('ta.apply'))}</button>
         <button class="btn small" id="taEdClose">${esc(t('ta.close'))}</button>
-      </div>`;
+      </div>
+      <div class="muted" id="taEdEffect"></div>`;
     if (!keepPlace || !box.isConnected) {
       const place = anchor || $('taPlan').querySelector(`.room-cell[data-g="${g}"]`) || $('taWarn');
       place.after(box);
     }
     if (!seat.pre && best) $('taEdSel').value = best.uid;
-    $('taEdSel').onchange = () => { $('taEdOther').hidden = $('taEdSel').value !== '__other__'; if (!$('taEdOther').hidden) $('taEdOther').focus(); };
+    // say what will happen for the person currently selected
+    const showEffect = () => {
+      const v = $('taEdSel').value, c = list.find(x => x.uid === v);
+      $('taEdOther').hidden = v !== '__other__';
+      $('taEdEffect').textContent = c ? (best && c.uid === best.uid ? '' : adviceFor(c, dayLabel).replace(/^[^:：]*[:：]\s*/, '')) : v === '__other__' ? t('ta.eOther') : v === '__empty__' ? t('ta.eEmpty') : '';
+    };
+    $('taEdSel').onchange = () => { showEffect(); if (!$('taEdOther').hidden) $('taEdOther').focus(); };
+    showEffect();
     $('taEdClose').onclick = closeTAEditor;
     $('taEdApply').onclick = () => {
       let v = $('taEdSel').value;
