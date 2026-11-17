@@ -411,3 +411,23 @@ Object.assign(window.I18N.ar, {
   'ta.unequal': '{name} لديه {have} مراقبات فقط بينما الباقون لديهم {want}، ولا يمكن زيادتها بسبب طلبات إجازته.',
   'ta.fix': 'حل المشكلة'
 });
+
+/* University name and logo */
+Object.assign(window.I18N.en, {
+  'brand.btn': 'University', 'brand.title': 'University name and logo',
+  'brand.hint': 'Shown at the top of the page. Leave empty for a plain “Exam Scheduler” page. Saved in this browser and in the settings file.',
+  'brand.name': 'University name (English)', 'brand.namePh': 'e.g. Cairo University',
+  'brand.nameAr': 'University name (Arabic)', 'brand.nameArPh': 'مثال: جامعة القاهرة',
+  'brand.short': 'Short name for the badge', 'brand.shortPh': 'e.g. CU',
+  'brand.logo': 'Upload logo image', 'brand.logoRemove': 'Remove logo', 'brand.tooBig': 'The image is too large. Use one under 400 KB.',
+  'cfg.loaded': 'Loaded {f}.'
+});
+Object.assign(window.I18N.ar, {
+  'brand.btn': 'الجامعة', 'brand.title': 'اسم الجامعة والشعار',
+  'brand.hint': 'يظهر أعلى الصفحة. اتركه فارغاً لصفحة «جدولة الامتحانات» بدون اسم جامعة. يُحفظ في هذا المتصفح وفي ملف الإعدادات.',
+  'brand.name': 'اسم الجامعة (بالإنجليزية)', 'brand.namePh': 'e.g. Cairo University',
+  'brand.nameAr': 'اسم الجامعة (بالعربية)', 'brand.nameArPh': 'مثال: جامعة القاهرة',
+  'brand.short': 'اختصار للشعار', 'brand.shortPh': 'مثال: CU',
+  'brand.logo': 'رفع صورة الشعار', 'brand.logoRemove': 'حذف الشعار', 'brand.tooBig': 'الصورة كبيرة جداً. استخدم صورة أقل من 400 كيلوبايت.',
+  'cfg.loaded': 'تم تحميل {f}.'
+});

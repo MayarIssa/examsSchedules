@@ -1,4 +1,4 @@
-# NMU Exam Scheduler
+# Exam Scheduler
 
 A static website that builds midterm and final exam timetables from a student-enrollment Excel file.
 Everything runs in the browser. Nothing is uploaded to a server.
@@ -14,6 +14,11 @@ Everything runs in the browser. Nothing is uploaded to a server.
 **TAs tab** (invigilation): upload the TA names (Word sheet, Excel/CSV or pasted text), set TAs per room, extra posts (e.g. floor supervisors), days off per TA and exam times per TA, and add requested days off or a TA's own exam times. The website gives each TA their days off on the quietest days and fills every room in use, then exports a timetable like the paper invigilation sheet.
 
 Midterm and final have separate settings. Settings and fixed exams are saved in the browser and can be exported/imported as a JSON file.
+
+## Using it for a university
+Press **University** at the top to set the university name (English and Arabic), short initials, or upload a logo.
+The settings file (Save settings to file) carries the name and logo, so one file sets up a university in one step.
+`samples/NMU_settings.json` holds the New Mansoura University setup (name, midterm dates, university-requirement and shared engineering exams).
 
 ## Files
 - `index.html`, `style.css`, `app.js`: the interface

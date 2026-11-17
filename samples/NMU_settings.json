@@ -1,0 +1,388 @@
+{
+  "brand": {
+    "name": "New Mansoura University",
+    "nameAr": "جامعة المنصورة الجديدة",
+    "short": "NMU"
+  },
+  "cfg": {
+    "midterm": {
+      "start": "2026-11-07",
+      "end": "2026-11-12",
+      "weekdays": [
+        6,
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "holidays": [],
+      "extraDays": [
+        "2026-11-14"
+      ],
+      "slots": [
+        "10:00-11:00",
+        "11:30-12:30",
+        "13:00-14:00",
+        "14:30-15:30"
+      ],
+      "capacity": 0,
+      "maxPerDay": 4,
+      "adjPen": 0,
+      "pen2": 2,
+      "pen3": 100,
+      "pen4": 3000,
+      "extraPen": 20,
+      "excluded": "",
+      "iterations": 1000000,
+      "restarts": 4,
+      "balance": 0.05,
+      "rooms": [
+        {
+          "name": "Room 1",
+          "seats": 25
+        },
+        {
+          "name": "Room 2",
+          "seats": 25
+        },
+        {
+          "name": "Room 3",
+          "seats": 25
+        },
+        {
+          "name": "Room 4",
+          "seats": 25
+        },
+        {
+          "name": "Room 5",
+          "seats": 25
+        },
+        {
+          "name": "Room 6",
+          "seats": 25
+        },
+        {
+          "name": "Room 7",
+          "seats": 25
+        },
+        {
+          "name": "Room 8",
+          "seats": 25
+        },
+        {
+          "name": "Room 9",
+          "seats": 25
+        },
+        {
+          "name": "Room 10",
+          "seats": 25
+        },
+        {
+          "name": "Room 11",
+          "seats": 25
+        },
+        {
+          "name": "Room 12",
+          "seats": 25
+        },
+        {
+          "name": "Room 13",
+          "seats": 25
+        },
+        {
+          "name": "Room 14",
+          "seats": 25
+        },
+        {
+          "name": "Room 15",
+          "seats": 25
+        },
+        {
+          "name": "Room 16",
+          "seats": 25
+        },
+        {
+          "name": "Room 17",
+          "seats": 25
+        },
+        {
+          "name": "Room 18",
+          "seats": 25
+        },
+        {
+          "name": "Room 19",
+          "seats": 25
+        },
+        {
+          "name": "Room 20",
+          "seats": 25
+        },
+        {
+          "name": "Room 21",
+          "seats": 25
+        },
+        {
+          "name": "Room 22",
+          "seats": 25
+        },
+        {
+          "name": "Room 23",
+          "seats": 25
+        },
+        {
+          "name": "Room 24",
+          "seats": 25
+        },
+        {
+          "name": "Room 25",
+          "seats": 25
+        },
+        {
+          "name": "Room 26",
+          "seats": 25
+        },
+        {
+          "name": "Room 27",
+          "seats": 25
+        },
+        {
+          "name": "Room 28",
+          "seats": 25
+        },
+        {
+          "name": "Room 29",
+          "seats": 25
+        },
+        {
+          "name": "Room 30",
+          "seats": 25
+        }
+      ],
+      "fixed": [
+        {
+          "code": "MGT101",
+          "date": "2026-11-07",
+          "slot": 2
+        },
+        {
+          "code": "GEO217",
+          "date": "2026-11-07",
+          "slot": 3
+        },
+        {
+          "code": "LAN011",
+          "date": "2026-11-08",
+          "slot": 3
+        },
+        {
+          "code": "LAN112",
+          "date": "2026-11-09",
+          "slot": 2
+        },
+        {
+          "code": "MGT102",
+          "date": "2026-11-09",
+          "slot": 3
+        },
+        {
+          "code": "ALD123",
+          "date": "2026-11-10",
+          "slot": 2
+        },
+        {
+          "code": "LAN114",
+          "date": "2026-11-10",
+          "slot": 3
+        },
+        {
+          "code": "PSC101",
+          "date": "2026-11-11",
+          "slot": 3
+        },
+        {
+          "code": "ECO205",
+          "date": "2026-11-12",
+          "slot": 2
+        },
+        {
+          "code": "MGT301",
+          "date": "2026-11-12",
+          "slot": 3
+        },
+        {
+          "code": "SOC216",
+          "date": "2026-11-12",
+          "slot": 3
+        },
+        {
+          "code": "MEC011",
+          "date": "2026-11-07",
+          "slot": 0
+        },
+        {
+          "code": "ELE211",
+          "date": "2026-11-10",
+          "slot": 1
+        },
+        {
+          "code": "ELE212",
+          "date": "2026-11-09",
+          "slot": 1
+        }
+      ]
+    },
+    "final": {
+      "start": "2027-01-02",
+      "end": "2027-01-21",
+      "weekdays": [
+        6,
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "holidays": [],
+      "extraDays": [],
+      "slots": [
+        "10:00-12:00",
+        "13:00-15:00"
+      ],
+      "capacity": 0,
+      "maxPerDay": 2,
+      "adjPen": 20,
+      "pen2": 3000,
+      "pen3": 3000,
+      "pen4": 3000,
+      "extraPen": 20,
+      "excluded": "",
+      "iterations": 300000,
+      "restarts": 4,
+      "balance": 0.05,
+      "rooms": [
+        {
+          "name": "Room 1",
+          "seats": 25
+        },
+        {
+          "name": "Room 2",
+          "seats": 25
+        },
+        {
+          "name": "Room 3",
+          "seats": 25
+        },
+        {
+          "name": "Room 4",
+          "seats": 25
+        },
+        {
+          "name": "Room 5",
+          "seats": 25
+        },
+        {
+          "name": "Room 6",
+          "seats": 25
+        },
+        {
+          "name": "Room 7",
+          "seats": 25
+        },
+        {
+          "name": "Room 8",
+          "seats": 25
+        },
+        {
+          "name": "Room 9",
+          "seats": 25
+        },
+        {
+          "name": "Room 10",
+          "seats": 25
+        },
+        {
+          "name": "Room 11",
+          "seats": 25
+        },
+        {
+          "name": "Room 12",
+          "seats": 25
+        },
+        {
+          "name": "Room 13",
+          "seats": 25
+        },
+        {
+          "name": "Room 14",
+          "seats": 25
+        },
+        {
+          "name": "Room 15",
+          "seats": 25
+        },
+        {
+          "name": "Room 16",
+          "seats": 25
+        },
+        {
+          "name": "Room 17",
+          "seats": 25
+        },
+        {
+          "name": "Room 18",
+          "seats": 25
+        },
+        {
+          "name": "Room 19",
+          "seats": 25
+        },
+        {
+          "name": "Room 20",
+          "seats": 25
+        },
+        {
+          "name": "Room 21",
+          "seats": 25
+        },
+        {
+          "name": "Room 22",
+          "seats": 25
+        },
+        {
+          "name": "Room 23",
+          "seats": 25
+        },
+        {
+          "name": "Room 24",
+          "seats": 25
+        },
+        {
+          "name": "Room 25",
+          "seats": 25
+        },
+        {
+          "name": "Room 26",
+          "seats": 25
+        },
+        {
+          "name": "Room 27",
+          "seats": 25
+        },
+        {
+          "name": "Room 28",
+          "seats": 25
+        },
+        {
+          "name": "Room 29",
+          "seats": 25
+        },
+        {
+          "name": "Room 30",
+          "seats": 25
+        }
+      ],
+      "fixed": []
+    }
+  }
+}

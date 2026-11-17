@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>NMU Exam Scheduler</title>
+<title>Exam Scheduler</title>
 <link rel="stylesheet" href="style.css">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>window.XLSX || document.write('<script src="vendor/xlsx.full.min.js"><\/script>');</script>
@@ -13,12 +13,13 @@
 <body>
 <header class="top">
   <div class="brand">
-    <div class="logo">NMU</div>
+    <div class="logo" id="brandLogo"></div>
     <div class="brand-text">
-      <h1 data-i18n="app.title">Exam Scheduler</h1>
-      <p class="sub" data-i18n="app.sub"></p>
+      <h1 id="brandTitle">Exam Scheduler</h1>
+      <p class="sub" id="brandSub"></p>
     </div>
     <div class="top-tools">
+      <button id="brandBtn" class="tool-btn" type="button"></button>
       <button id="langBtn" class="tool-btn" type="button"></button>
       <button id="themeBtn" class="tool-btn" type="button"></button>
     </div>
@@ -31,6 +32,21 @@
 </header>
 
 <main id="main">
+  <section class="card brand-panel hidden" id="brandPanel">
+    <h2 data-i18n="brand.title"></h2>
+    <p class="hint" data-i18n="brand.hint"></p>
+    <div class="grid3">
+      <label><span data-i18n="brand.name"></span><input id="brandName" data-i18n-ph="brand.namePh"></label>
+      <label><span data-i18n="brand.nameAr"></span><input id="brandNameAr" dir="rtl" data-i18n-ph="brand.nameArPh"></label>
+      <label><span data-i18n="brand.short"></span><input id="brandShort" maxlength="8" data-i18n-ph="brand.shortPh"></label>
+    </div>
+    <div class="row wrap">
+      <label class="file-btn small"><span data-i18n="brand.logo"></span><input type="file" id="brandLogoFile" accept="image/png,image/jpeg,image/svg+xml,image/webp"></label>
+      <button id="brandLogoRemove" class="btn small" data-i18n="brand.logoRemove" hidden></button>
+      <button id="brandClose" class="btn small" data-i18n="ta.close"></button>
+      <span id="brandMsg" class="muted"></span>
+    </div>
+  </section>
   <div class="row wrap toolbar">
     <p class="hint reorder-hint" data-i18n="hint.reorder"></p>
     <button id="foldAll" class="btn small" data-i18n="btn.foldAll"></button>

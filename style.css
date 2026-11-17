@@ -189,3 +189,10 @@ table.matrix .mx-res { background: var(--fixed); color: var(--ink); font-style: 
 .msg-row > div { min-width: 0; flex: 1 1 260px; }
 .ta-editor .ed-title { font-weight: 700; font-size: 15px; }
 .ta-editor #taEdEffect:empty { display: none; }
+
+/* university logo */
+.logo { min-width: 44px; height: 40px; display: grid; place-items: center; }
+.logo.logo-icon { color: var(--logo-ink); }
+.logo.logo-img { background: var(--logo-bg); padding: 3px; }
+.logo.logo-img img { max-height: 34px; max-width: 120px; display: block; }
+.brand-panel h2 { margin-bottom: 4px; }

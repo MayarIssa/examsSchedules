@@ -1,32 +1,23 @@
-/* NMU Exam Scheduler — UI logic. Everything runs in the browser; data is kept in localStorage. */
+/* Exam Scheduler — UI logic. Everything runs in the browser; data is kept in localStorage. */
 (function () {
   'use strict';
-  const STORE = 'nmu-exam-scheduler-v1';
+  const STORE = 'nmu-exam-scheduler-v1'; // storage name kept so saved settings survive updates
   const $ = id => document.getElementById(id);
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const normCode = s => String(s == null ? '' : s).toUpperCase().replace(/[\s_\-–]+/g, '');
 
+  // Neutral defaults for any university. Dates start from the coming Saturday; change them in "Exam period".
+  const isoDay = x => new Date(x).toISOString().slice(0, 10);
+  const comingSat = (() => { const n = new Date(); const t0 = Date.UTC(n.getFullYear(), n.getMonth(), n.getDate()); const wd = new Date(t0).getUTCDay(); return t0 + (((6 - wd + 7) % 7) || 7) * 864e5; })();
   const DEFAULTS = {
     midterm: {
-      start: '2026-11-07', end: '2026-11-12', weekdays: [6, 0, 1, 2, 3, 4], holidays: [], extraDays: ['2026-11-14'],
+      start: isoDay(comingSat), end: isoDay(comingSat + 5 * 864e5), weekdays: [6, 0, 1, 2, 3, 4], holidays: [], extraDays: [isoDay(comingSat + 7 * 864e5)],
       slots: ['10:00-11:00', '11:30-12:30', '13:00-14:00', '14:30-15:30'],
       capacity: 0, maxPerDay: 4, adjPen: 0, pen2: 2, pen3: 100, pen4: 3000, extraPen: 20, excluded: '',
-      iterations: 1000000, restarts: 4, balance: 0.05, rooms: defaultRooms(30, 25),
-      fixed: [
-        // University requirements (from the university schedule, 20-10-2026)
-        { code: 'MGT101', date: '2026-11-07', slot: 2 }, { code: 'GEO217', date: '2026-11-07', slot: 3 },
-        { code: 'LAN011', date: '2026-11-08', slot: 3 }, { code: 'LAN112', date: '2026-11-09', slot: 2 },
-        { code: 'MGT102', date: '2026-11-09', slot: 3 }, { code: 'ALD123', date: '2026-11-10', slot: 2 },
-        { code: 'LAN114', date: '2026-11-10', slot: 3 }, { code: 'PSC101', date: '2026-11-11', slot: 3 },
-        { code: 'ECO205', date: '2026-11-12', slot: 2 }, { code: 'MGT301', date: '2026-11-12', slot: 3 },
-        { code: 'SOC216', date: '2026-11-12', slot: 3 },
-        // Shared with the Faculty of Engineering
-        { code: 'MEC011', date: '2026-11-07', slot: 0 }, { code: 'ELE211', date: '2026-11-10', slot: 1 },
-        { code: 'ELE212', date: '2026-11-09', slot: 1 }
-      ]
+      iterations: 1000000, restarts: 4, balance: 0.05, rooms: defaultRooms(30, 25), fixed: []
     },
     final: {
-      start: '2027-01-02', end: '2027-01-21', weekdays: [6, 0, 1, 2, 3, 4], holidays: [], extraDays: [],
+      start: isoDay(comingSat + 49 * 864e5), end: isoDay(comingSat + 68 * 864e5), weekdays: [6, 0, 1, 2, 3, 4], holidays: [], extraDays: [],
       slots: ['10:00-12:00', '13:00-15:00'],
       capacity: 0, maxPerDay: 2, adjPen: 20, pen2: 3000, pen3: 3000, pen4: 3000, extraPen: 20, excluded: '',
       iterations: 300000, restarts: 4, balance: 0.05, rooms: defaultRooms(30, 25), fixed: []
@@ -53,6 +44,7 @@
     s.lang = s.lang === 'ar' ? 'ar' : 'en';
     s.theme = ['light', 'dark'].includes(s.theme) ? s.theme : 'auto';
     s.view = s.view === 'ta' ? 'ta' : 'exam';
+    s.brand = Object.assign({ name: '', nameAr: '', short: '', logo: '' }, s.brand || {});
     const taDef = { list: [], seq: 0, examFor: 'midterm', seed: 1, result: {}, cfg: {
       midterm: { perRoom: 1, offDays: 1, duties: null, roomTAs: {}, requests: [] },
       final: { perRoom: 1, offDays: 3, duties: null, roomTAs: {}, requests: [] } } };
@@ -101,8 +93,39 @@
     $('adjPen').innerHTML = [[0, 'lvl.0'], [3, 'lvl.2'], [20, 'lvl.20'], [50, 'lvl.100']].map(([v, k]) => `<option value="${v}">${t(k)}</option>`).join('');
     $('extraPen').innerHTML = [0, 20, 100].map(v => `<option value="${v}">${t('ext.' + v)}</option>`).join('');
     renderThemeBtn();
+    renderBrand();
   }
   $('langBtn').onclick = () => { state.lang = state.lang === 'ar' ? 'en' : 'ar'; save(); applyLang(); renderAll(); };
+
+  // ---------------- university name and logo ----------------
+  const CAL_ICON = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3 10h18M8 3v4M16 3v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+  function renderBrand() {
+    const b = state.brand, name = (state.lang === 'ar' && b.nameAr) || b.name || b.nameAr;
+    const logo = $('brandLogo');
+    if (b.logo) { logo.className = 'logo logo-img'; logo.innerHTML = `<img src="${esc(b.logo)}" alt="">`; }
+    else if (b.short) { logo.className = 'logo'; logo.textContent = b.short; }
+    else { logo.className = 'logo logo-icon'; logo.innerHTML = CAL_ICON; }
+    $('brandTitle').textContent = name || t('app.title');
+    $('brandSub').textContent = name ? t('app.title') + ' · ' + t('app.sub') : t('app.sub');
+    document.title = name ? `${t('app.title')} · ${b.short || name}` : t('app.title');
+    $('brandName').value = b.name; $('brandNameAr').value = b.nameAr; $('brandShort').value = b.short;
+    $('brandLogoRemove').hidden = !b.logo;
+    $('brandBtn').textContent = t('brand.btn');
+  }
+  $('brandBtn').onclick = () => { $('brandPanel').classList.toggle('hidden'); if (!$('brandPanel').classList.contains('hidden')) $('brandName').focus(); };
+  $('brandClose').onclick = () => $('brandPanel').classList.add('hidden');
+  ['brandName', 'brandNameAr', 'brandShort'].forEach(id => $(id).addEventListener('input', () => {
+    state.brand.name = $('brandName').value.trim(); state.brand.nameAr = $('brandNameAr').value.trim();
+    state.brand.short = $('brandShort').value.trim().slice(0, 8); save(); renderBrand();
+  }));
+  $('brandLogoFile').addEventListener('change', ev => {
+    const f = ev.target.files[0]; ev.target.value = ''; if (!f) return;
+    if (f.size > 400 * 1024) { $('brandMsg').textContent = t('brand.tooBig'); return; }
+    const rd = new FileReader();
+    rd.onload = () => { state.brand.logo = rd.result; $('brandMsg').textContent = ''; save(); renderBrand(); };
+    rd.readAsDataURL(f);
+  });
+  $('brandLogoRemove').onclick = () => { state.brand.logo = ''; save(); renderBrand(); };
 
   // ---------------- theme ----------------
   let themeSetByPage = false;
@@ -796,18 +819,20 @@
 
   // ---------------- settings file ----------------
   $('exportCfg').onclick = () => {
-    saveFile('exam-scheduler-settings.json', JSON.stringify({ cfg: state.cfg, extra: state.extra, order: state.order, ta: { list: state.ta.list, seq: state.ta.seq, cfg: state.ta.cfg } }, null, 2), 'application/json', $('cfgMsg'));
+    saveFile('exam-scheduler-settings.json', JSON.stringify({ brand: state.brand, cfg: state.cfg, extra: state.extra, order: state.order, ta: { list: state.ta.list, seq: state.ta.seq, cfg: state.ta.cfg } }, null, 2), 'application/json', $('cfgMsg'));
   };
   $('importCfg').addEventListener('change', async ev => {
     const f = ev.target.files[0]; if (!f) return;
     try {
       const j = JSON.parse(await f.text());
+      if (j.brand && typeof j.brand === 'object') state.brand = Object.assign({ name: '', nameAr: '', short: '', logo: '' }, j.brand);
       if (Array.isArray(j.extra)) state.extra = j.extra;
       if (Array.isArray(j.order)) state.order = j.order;
       if (j.ta && Array.isArray(j.ta.list)) { state.ta.list = j.ta.list; state.ta.seq = Math.max(state.ta.seq, j.ta.seq || 0); for (const m of ['midterm', 'final']) if (j.ta.cfg && j.ta.cfg[m]) state.ta.cfg[m] = Object.assign(state.ta.cfg[m], j.ta.cfg[m]); }
       if (Array.isArray(j.rooms)) for (const m of ['midterm', 'final']) if (j.cfg && j.cfg[m] && !j.cfg[m].rooms) j.cfg[m].rooms = clone(j.rooms);
       for (const m of ['midterm', 'final']) if (j.cfg && j.cfg[m]) state.cfg[m] = Object.assign(clone(DEFAULTS[m]), j.cfg[m]);
-      typingRows.clear(); save(); renderAll();
+      typingRows.clear(); save(); renderBrand(); renderAll();
+      $('cfgMsg').textContent = t('cfg.loaded', { f: f.name });
     } catch (err) { $('cfgMsg').innerHTML = `<span class="err">${esc(t('cfg.loadErr', { m: err.message }))}</span>`; }
     ev.target.value = '';
   });
